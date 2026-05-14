@@ -410,10 +410,7 @@ textarea.prompt-input {
       </div>
       <input type="file" id="IMG_INPUT" accept="image/*" style="display:none"
         onchange="if(this.files&&this.files.length>0){document.getElementById('BTN_IMG').disabled=false;document.getElementById('IMG_DROP').style.borderColor='var(--accent)';UI.log('📸 Görsel yüklendi: '+this.files[0].name);}">
-      <div style="display:flex;gap:4px;margin-bottom:6px;">
-        <button class="tab-btn" id="IMG_API_MESHY" onclick="UI.setImgApi('meshy')" style="flex:1;font-size:7px;padding:4px;background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);">Meshy</button>
-        <button class="tab-btn" id="IMG_API_TRELLIS" onclick="UI.setImgApi('trellis')" style="flex:1;font-size:7px;padding:4px;">Trellis</button>
-      </div>
+
       <div id="TRELLIS_OPTS" style="display:none;margin-bottom:6px;">
         <div style="font-size:7px;color:var(--muted);margin-bottom:3px;">Texture Kalitesi</div>
         <select id="TRELLIS_TEX" style="width:100%;background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.14);border-radius:3px;padding:4px 6px;color:var(--text);font-size:9px;font-family:'JetBrains Mono',monospace;outline:none;">
@@ -1300,7 +1297,7 @@ const UI = (() => {
     }
   }
 
-  let _imgApi = 'meshy'; // 'meshy' | 'trellis'
+  let _imgApi = 'trellis'; // 'meshy' | 'trellis'
 
   function setImgApi(api) {
     _imgApi = api;
