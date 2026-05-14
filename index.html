@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS ENGINE Beta 8.0</title>
+
+<!-- Three.js r128 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap');
+
+:root {
+  --bg: #1a1a1a;
+  --panel: rgba(22,22,22,0.97);
+  --border: rgba(0,200,255,0.12);
+  --accent: #00c8ff;
+  --accent2: #ff6b00;
+  --accent3: #a855f7;
+  --green: #00ff88;
+  --red: #ff3333;
+  --text: #c8e8f8;
+  --muted: #3a5a6a;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* ── HEADER ── */
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(10,10,10,0.98);
+  border-bottom: 1px solid var(--border);
+  height: 44px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--accent);
+  letter-spacing: 3px;
+  white-space: nowrap;
+}
+.logo em { color: var(--accent2); font-style: normal; }
+.hbtn {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  border: 1px solid;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+}
+.hbtn-save  { background: rgba(0,200,255,.08); border-color: rgba(0,200,255,.3); color: var(--accent); }
+.hbtn-glb   { background: rgba(168,85,247,.08); border-color: rgba(168,85,247,.3); color: var(--accent3); }
+.hbtn-clear { background: rgba(255,50,50,.08); border-color: rgba(255,50,50,.3); color: var(--red); }
+.credit-display {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--accent);
+  font-family: 'Orbitron', sans-serif;
+}
+
+/* ── LAYOUT ── */
+.workspace {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── LEFT PANEL ── */
+.left-panel {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.panel-section {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 7px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+/* Tab */
+.tabs { display: flex; gap: 2px; margin-bottom: 8px; }
+.tab-btn {
+  flex: 1;
+  padding: 5px 3px;
+  background: rgba(0,200,255,.04);
+  border: 1px solid rgba(0,200,255,.14);
+  border-radius: 4px 4px 0 0;
+  color: var(--muted);
+  font-size: 7px;
+  cursor: pointer;
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 1px;
+  transition: all .15s;
+}
+.tab-btn.active {
+  background: rgba(0,200,255,.14);
+  border-color: rgba(0,200,255,.35);
+  color: var(--accent);
+}
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* Inputs */
+textarea.prompt-input {
+  width: 100%;
+  height: 70px;
+  background: rgba(0,200,255,.04);
+  border: 1px solid rgba(0,200,255,.15);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 6px;
+  resize: none;
+  margin-bottom: 6px;
+}
+.gen-btn {
+  width: 100%;
+  padding: 8px;
+  background: linear-gradient(135deg, rgba(0,200,255,.15), rgba(0,200,255,.08));
+  border: 1px solid rgba(0,200,255,.4);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 9px;
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.gen-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.gen-btn:hover:not(:disabled) { background: rgba(0,200,255,.25); }
+
+/* Image upload */
+.img-drop {
+  width: 100%;
+  height: 80px;
+  border: 2px dashed rgba(0,200,255,.3);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  gap: 4px;
+  margin-bottom: 8px;
+  transition: all .2s;
+}
+.img-drop:hover { border-color: var(--accent); background: rgba(0,200,255,.04); }
+
+/* Scale slider */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.slider-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.slider-val { font-size: 10px; color: var(--accent); min-width: 30px; text-align: right; }
+
+/* Quick prompts */
+.quick-grid { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.q-btn {
+  padding: 5px 8px;
+  background: rgba(0,200,255,.04);
+  border: 1px solid rgba(0,200,255,.1);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all .15s;
+}
+.q-btn:hover { background: rgba(0,200,255,.1); color: var(--text); }
+
+/* ── VIEWPORT ── */
+#VP {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+#VP canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Transform mode butonları */
+.transform-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+.tm-btn {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  border: 1px solid;
+  letter-spacing: 1px;
+  transition: all .15s;
+}
+.tm-btn.translate { background: rgba(0,200,255,.1); border-color: rgba(0,200,255,.4); color: var(--accent); }
+.tm-btn.rotate    { background: rgba(168,85,247,.1); border-color: rgba(168,85,247,.4); color: var(--accent3); }
+.tm-btn.scale-btn { background: rgba(255,107,0,.1);  border-color: rgba(255,107,0,.4);  color: var(--accent2); }
+.tm-btn:hover { filter: brightness(1.3); }
+
+/* Hotkey hint */
+.hotkey-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  color: rgba(0,200,255,.3);
+  pointer-events: none;
+  letter-spacing: 2px;
+}
+
+/* ── RIGHT PANEL ── */
+.right-panel {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Inspector */
+#INS { display: none; }
+#INS.active { display: block; }
+.ins-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.ins-label { font-size: 7px; color: var(--muted); min-width: 20px; }
+.ins-input {
+  flex: 1;
+  background: rgba(0,200,255,.04);
+  border: 1px solid rgba(0,200,255,.15);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 3px 5px;
+}
+
+/* Gallery */
+.gallery-item {
+  background: rgba(0,200,255,.04);
+  border: 1px solid rgba(0,200,255,.1);
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gallery-thumb { font-size: 24px; text-align: center; }
+.gallery-name { font-size: 8px; text-align: center; color: var(--text); }
+.gallery-empty { font-size: 8px; color: var(--muted); text-align: center; padding: 20px; }
+.gallery-actions { display: flex; gap: 4px; }
+.btn-add {
+  flex: 1; padding: 4px;
+  background: rgba(0,200,255,.1); border: 1px solid rgba(0,200,255,.3);
+  border-radius: 3px; color: var(--accent); font-size: 8px; cursor: pointer;
+}
+.btn-del {
+  padding: 4px 6px;
+  background: rgba(255,50,50,.1); border: 1px solid rgba(255,50,50,.2);
+  border-radius: 3px; color: var(--red); font-size: 8px; cursor: pointer;
+}
+
+/* Log */
+#LOG {
+  height: 140px;
+  overflow-y: auto;
+  font-size: 8px;
+  background: rgba(0,0,0,.3);
+  border-radius: 3px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.log-line { color: var(--muted); }
+.log-line.lok { color: var(--green); }
+.log-line.lw  { color: #ff9966; }
+.log-line.lai { color: var(--accent); }
+
+/* Print */
+.print-select, .print-input {
+  width: 100%;
+  background: rgba(0,200,255,.04);
+  border: 1px solid rgba(0,200,255,.15);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 4px;
+  margin-bottom: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">NEXUS <em>ENGINE</em> <sup>β8</sup></div>
+  <button class="hbtn hbtn-save" onclick="Engine.exportGLB('nexus_scene')">📦 GLB EXPORT</button>
+  <button class="hbtn hbtn-glb"  onclick="UI.exportSTL()">🖨 STL</button>
+  <button class="hbtn hbtn-clear" onclick="Engine.clearModels(); UI.log('Sahne temizlendi')">🗑 TEMİZLE</button>
+  <div class="credit-display">💎 <span id="CREDITS">100</span></div>
+</header>
+
+<!-- WORKSPACE -->
+<div class="workspace">
+
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+
+    <!-- Tab butonları -->
+    <div class="panel-section" style="padding-bottom:0">
+      <div class="tabs">
+        <button class="tab-btn active" id="TAB_PROMPT" onclick="UI.switchTab('prompt')">✏️ Prompt</button>
+        <button class="tab-btn" id="TAB_IMAGE"  onclick="UI.switchTab('image')">🖼 Görsel</button>
+        <button class="tab-btn" id="TAB_PRINT"  onclick="UI.switchTab('print')">🖨 Baskı</button>
+      </div>
+    </div>
+
+    <!-- PROMPT -->
+    <div class="panel-section tab-pane active" id="PANE_PROMPT">
+      <div class="panel-title">✏️ PROMPT İLE ÜRET</div>
+      <textarea class="prompt-input" id="PROMPT" placeholder="3D model tarif et...&#10;Örn: Viking savaşçısı kalkan kılıç"></textarea>
+      <button class="gen-btn" id="BTN_GENERATE" onclick="UI.runGenerate()">⚡ ÜRET (-10 💎)</button>
+
+      <!-- Scale slider -->
+      <div style="margin-top:10px">
+        <div style="font-size:7px;color:var(--muted);margin-bottom:4px">📐 MODEL BOYUTU (metre)</div>
+        <div class="slider-row">
+          <input type="range" id="SCALE_SLIDER" min="0.5" max="10" value="2" step="0.5"
+            oninput="document.getElementById('SCALE_VAL').textContent=this.value+'m'">
+          <span class="slider-val" id="SCALE_VAL">2m</span>
+        </div>
+        <div style="font-size:7px;color:var(--muted);margin-top:2px">1 birim = 1 metre (endüstri standardı)</div>
+      </div>
+
+      <!-- Hızlı promptlar -->
+      <div class="quick-grid">
+        <button class="q-btn" onclick="document.getElementById('PROMPT').value=this.textContent.slice(2)">🏰 Moradon kalesi taş kule ateş kristalleri</button>
+        <button class="q-btn" onclick="document.getElementById('PROMPT').value=this.textContent.slice(2)">⚔️ Viking savaşçısı zırh kalkan kılıç</button>
+        <button class="q-btn" onclick="document.getElementById('PROMPT').value=this.textContent.slice(2)">🐉 Ejderha heykeli fantezi pul kanat</button>
+        <button class="q-btn" onclick="document.getElementById('PROMPT').value=this.textContent.slice(2)">🏔️ Antik tapınak sütunlar gün batımı</button>
+      </div>
+    </div>
+
+    <!-- IMAGE -->
+    <div class="panel-section tab-pane" id="PANE_IMAGE">
+      <div class="panel-title">🖼 GÖRSELDEN 3D ÜRET</div>
+      <div class="img-drop" id="IMG_DROP" onclick="document.getElementById('IMG_INPUT').click()">
+        <div style="font-size:28px">📸</div>
+        <div style="font-size:8px;color:var(--muted)">Tıkla veya sürükle</div>
+        <div style="font-size:7px;color:var(--muted)">PNG / JPG / WEBP</div>
+      </div>
+      <input type="file" id="IMG_INPUT" accept="image/*" style="display:none"
+        onchange="document.getElementById('BTN_IMG').disabled=false; UI.log('📸 Görsel yüklendi')">
+      <div style="display:flex;gap:4px;margin-bottom:6px;">
+        <button class="tab-btn" id="IMG_API_MESHY" onclick="UI.setImgApi('meshy')" style="flex:1;font-size:7px;padding:4px;background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);">Meshy</button>
+        <button class="tab-btn" id="IMG_API_TRELLIS" onclick="UI.setImgApi('trellis')" style="flex:1;font-size:7px;padding:4px;">Trellis</button>
+      </div>
+      <div id="TRELLIS_OPTS" style="display:none;margin-bottom:6px;">
+        <div style="font-size:7px;color:var(--muted);margin-bottom:3px;">Texture Kalitesi</div>
+        <select id="TRELLIS_TEX" style="width:100%;background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.14);border-radius:3px;padding:4px 6px;color:var(--text);font-size:9px;font-family:'JetBrains Mono',monospace;outline:none;">
+          <option value="512">512 — Hızlı</option>
+          <option value="1024" selected>1024 — Orta</option>
+          <option value="2048">2048 — Yüksek</option>
+        </select>
+      </div>
+      <button class="gen-btn" id="BTN_IMG" disabled onclick="UI.runImageTo3D()">🖼→📦 3D'YE DÖNÜŞTÜR (-15 💎)</button>
+    </div>
+
+    <!-- PRINT -->
+    <div class="panel-section tab-pane" id="PANE_PRINT">
+      <div class="panel-title">🖨 3D BASKI</div>
+      <div style="font-size:7px;color:var(--muted);margin-bottom:8px">Sahnedeki modeli 3D baskıya hazırlar.</div>
+      <div style="font-size:7px;color:var(--muted);margin-bottom:4px">Birim</div>
+      <select class="print-select" id="PRINT_UNIT">
+        <option value="mm">Milimetre (mm)</option>
+        <option value="cm">Santimetre (cm)</option>
+        <option value="inch">İnç (inch)</option>
+      </select>
+      <div style="font-size:7px;color:var(--muted);margin-bottom:4px">Max kenar boyutu</div>
+      <input class="print-input" type="number" id="PRINT_SIZE" value="100" min="10" max="500">
+      <button class="gen-btn" onclick="UI.exportSTL()">🖨 STL EXPORT</button>
+    </div>
+
+  </div>
+
+  <!-- VIEWPORT -->
+  <div id="VP">
+    <canvas id="CANVAS"></canvas>
+
+    <!-- Transform modu butonları -->
+    <div class="transform-bar">
+      <button class="tm-btn translate" onclick="Engine.transformControls.setMode('translate')">↔ TAŞI [W]</button>
+      <button class="tm-btn rotate"    onclick="Engine.transformControls.setMode('rotate')">↻ DÖNDÜR [E]</button>
+      <button class="tm-btn scale-btn" onclick="Engine.transformControls.setMode('scale')">⤡ BOYUT [R]</button>
+    </div>
+
+    <!-- Hotkey ipucu -->
+    <div class="hotkey-hint">SOL TIK: Orbit · SAĞ TIK: Pan · SCROLL: Zoom · W/E/R: Transform · DEL: Sil · Ctrl+D: Kopyala</div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <!-- Inspector -->
+    <div class="panel-section" id="INS">
+      <div class="panel-title">📐 INSPECTOR</div>
+      <div style="font-size:8px;color:var(--accent);margin-bottom:6px" id="INS_NAME">—</div>
+      <div class="panel-title" style="margin-top:4px">POZİSYON</div>
+      <div class="ins-row"><span class="ins-label">X</span><input class="ins-input" id="INS_PX" type="number" step="0.1"></div>
+      <div class="ins-row"><span class="ins-label">Y</span><input class="ins-input" id="INS_PY" type="number" step="0.1"></div>
+      <div class="ins-row"><span class="ins-label">Z</span><input class="ins-input" id="INS_PZ" type="number" step="0.1"></div>
+      <div class="panel-title" style="margin-top:6px">DÖNDÜRME (°)</div>
+      <div class="ins-row"><span class="ins-label">Y</span><input class="ins-input" id="INS_RY" type="number" step="1"></div>
+      <div class="panel-title" style="margin-top:6px">ÖLÇEK</div>
+      <div class="ins-row"><span class="ins-label">S</span><input class="ins-input" id="INS_SX" type="number" step="0.1"></div>
+    </div>
+
+    <!-- Gallery -->
+    <div class="panel-section">
+      <div class="panel-title">🗂 GALERİ (<span id="GALLERY_COUNT">0</span>)</div>
+      <div id="GALLERY"></div>
+    </div>
+
+    <!-- Log -->
+    <div class="panel-section">
+      <div class="panel-title">📋 LOG</div>
+      <div id="LOG"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── engine.js ──
+/* ═══════════════════════════════════════════
+   NEXUS ENGINE — engine.js
+   Three.js core. Tek kamera sistemi.
+   Başka hiçbir dosya kamerayı dokunmaz.
+═══════════════════════════════════════════ */
+
+const Engine = (() => {
+  let renderer, scene, camera, orbitControls, transformControls;
+  let userGroup; // sadece kullanıcı modellerini tutar
+  let _animId = null;
+  let _matcapTex = null;
+
+  // ── Init ──
+  function init(canvasEl) {
+    // Renderer
+    renderer = new THREE.WebGLRenderer({
+      canvas: canvasEl,
+      antialias: false,
+      powerPreference: 'high-performance'
+    });
+    renderer.setPixelRatio(1.0);
+    renderer.shadowMap.enabled = false;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.NoToneMapping;
+
+    // Scene
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2b2b2b);
+
+    // Camera
+    camera = new THREE.PerspectiveCamera(60, 1, 0.01, 1000);
+    camera.position.set(0, 5, 10);
+
+    // User group
+    userGroup = new THREE.Group();
+    userGroup.name = '__userGroup';
+    scene.add(userGroup);
+
+    // Lights
+    _setupLights();
+
+    // Grid + Ground
+    _setupGround();
+
+    // OrbitControls — TEK kamera sistemi
+    orbitControls = new THREE.OrbitControls(camera, canvasEl);
+    orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.08;
+    orbitControls.screenSpacePanning = true;
+    orbitControls.minDistance = 0.5;
+    orbitControls.maxDistance = 100;
+    orbitControls.maxPolarAngle = Math.PI / 2 - 0.01;
+    orbitControls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN
+    };
+
+    // TransformControls
+    transformControls = new THREE.TransformControls(camera, canvasEl);
+    transformControls.setMode('translate');
+    scene.add(transformControls);
+
+    // TransformControls aktifken orbit kapat
+    transformControls.addEventListener('dragging-changed', e => {
+      orbitControls.enabled = !e.value;
+    });
+
+    // MatCap texture
+    _loadMatcap();
+
+    // Resize
+    window.addEventListener('resize', _resize);
+    _resize();
+
+    // Loop başlat
+    _loop();
+  }
+
+  function _setupLights() {
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+    hemi.name = '__hemi';
+    scene.add(hemi);
+
+    const key = new THREE.DirectionalLight(0xffffff, 1.0);
+    key.position.set(5, 8, 3);
+    key.name = '__key';
+    scene.add(key);
+
+    const fill = new THREE.DirectionalLight(0xffffff, 0.4);
+    fill.position.set(-5, 3, -3);
+    fill.name = '__fill';
+    scene.add(fill);
+
+    const back = new THREE.DirectionalLight(0xffffff, 0.25);
+    back.position.set(0, 5, -8);
+    back.name = '__back';
+    scene.add(back);
+  }
+
+  function _setupGround() {
+    const grid = new THREE.GridHelper(20, 20, 0x505050, 0x404040);
+    grid.name = '__grid';
+    scene.add(grid);
+
+    const gnd = new THREE.Mesh(
+      new THREE.PlaneGeometry(20, 20),
+      new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 1 })
+    );
+    gnd.rotation.x = -Math.PI / 2;
+    gnd.position.y = -0.002;
+    gnd.name = '__ground';
+    scene.add(gnd);
+  }
+
+  function _loadMatcap() {
+    new THREE.TextureLoader().load(
+      'https://threejs.org/examples/textures/matcaps/matcap-porcelain-white.jpg',
+      tex => { _matcapTex = tex; },
+      undefined,
+      () => {
+        // Fallback — canvas matcap
+        const mc = document.createElement('canvas');
+        mc.width = mc.height = 64;
+        const ctx = mc.getContext('2d');
+        const g = ctx.createRadialGradient(20, 20, 2, 32, 32, 40);
+        g.addColorStop(0, '#fff'); g.addColorStop(1, '#666');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+        _matcapTex = new THREE.CanvasTexture(mc);
+      }
+    );
+  }
+
+  function _resize() {
+    const vp = document.getElementById('VP');
+    if (!vp) return;
+    const w = vp.clientWidth, h = vp.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+
+  function _loop() {
+    _animId = requestAnimationFrame(_loop);
+    orbitControls.update();
+    renderer.render(scene, camera);
+  }
+
+  // ── Model yükle ──
+  function loadModel(buffer, name, targetSize) {
+    return new Promise((resolve, reject) => {
+      const loader = new THREE.GLTFLoader();
+      loader.parse(buffer, '', gltf => {
+        const model = gltf.scene;
+
+        // Scale
+        const box0 = new THREE.Box3().setFromObject(model);
+        const size = box0.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = (targetSize || 2) / maxDim;
+        model.scale.setScalar(scale);
+        model.updateMatrixWorld(true);
+
+        // Zemin
+        const box1 = new THREE.Box3().setFromObject(model);
+        const center = box1.getCenter(new THREE.Vector3());
+        model.position.set(-center.x, -box1.min.y, -center.z);
+        model.updateMatrixWorld(true);
+
+        // Materyal — matcap
+        if (_matcapTex) {
+          const mat = new THREE.MeshMatcapMaterial({ matcap: _matcapTex });
+          model.traverse(c => {
+            if (c.isMesh) c.material = mat.clone();
+          });
+        }
+
+        // İsim
+        model.name = name || 'model_' + Date.now();
+        model.userData.isUserModel = true;
+
+        userGroup.add(model);
+
+        // Kamerayı focus
+        const box2 = new THREE.Box3().setFromObject(model);
+        const c2 = box2.getCenter(new THREE.Vector3());
+        const s2 = box2.getSize(new THREE.Vector3());
+        orbitControls.target.copy(c2);
+        camera.position.set(c2.x, c2.y + s2.y, c2.z + s2.length() * 1.5);
+        orbitControls.update();
+
+        resolve(model);
+      }, reject);
+    });
+  }
+
+  // ── Model sil ──
+  function removeModel(model) {
+    userGroup.remove(model);
+    model.traverse(c => {
+      if (c.isMesh) {
+        c.geometry.dispose();
+        if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
+        else c.material.dispose();
+      }
+    });
+  }
+
+  // ── Tüm modelleri sil ──
+  function clearModels() {
+    const children = userGroup.children.slice();
+    children.forEach(removeModel);
+  }
+
+  // ── GLB Export ──
+  function exportGLB(filename) {
+    if (!userGroup.children.length) return Promise.reject('Sahne boş');
+    return new Promise((resolve, reject) => {
+      const exporter = new THREE.GLTFExporter();
+      const exportGroup = new THREE.Group();
+      userGroup.children.forEach(child => {
+        const cl = child.clone(true);
+        // Matcap → Standard (Blender uyumlu)
+        cl.traverse(c => {
+          if (c.isMesh && c.material.type === 'MeshMatcapMaterial') {
+            c.material = new THREE.MeshStandardMaterial({
+              color: 0xd4d4d4, roughness: 0.7, metalness: 0
+            });
+          }
+        });
+        exportGroup.add(cl);
+      });
+
+      exporter.parse(exportGroup, glb => {
+        const blob = new Blob([glb], { type: 'application/octet-stream' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (filename || 'nexus_export') + '.glb';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        resolve();
+      }, { binary: true, embedImages: true });
+    });
+  }
+
+  // ── FPS modu ──
+  function disableOrbit() { orbitControls.enabled = false; }
+  function enableOrbit()  { orbitControls.enabled = true; }
+
+  // ── Raycast (kullanıcı modelleri) ──
+  function raycast(e) {
+    const vp = document.getElementById('VP');
+    if (!vp) return null;
+    const rect = vp.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(mouse, camera);
+    const meshes = [];
+    userGroup.traverse(c => { if (c.isMesh) meshes.push(c); });
+    const hits = rc.intersectObjects(meshes, true);
+    if (!hits.length) return null;
+    let obj = hits[0].object;
+    while (obj.parent && obj.parent !== userGroup) obj = obj.parent;
+    return obj.parent === userGroup ? obj : null;
+  }
+
+  // Public API
+  return {
+    init, loadModel, removeModel, clearModels, exportGLB,
+    disableOrbit, enableOrbit, raycast,
+    get scene() { return scene; },
+    get camera() { return camera; },
+    get userGroup() { return userGroup; },
+    get transformControls() { return transformControls; },
+    get orbitControls() { return orbitControls; },
+  };
+})();
+
+
+// ── editor.js ──
+/* ═══════════════════════════════════════════
+   NEXUS ENGINE — editor.js
+   Selection, Transform, Hotkeys.
+   Engine'e bağımlı, UI'a değil.
+═══════════════════════════════════════════ */
+
+const Editor = (() => {
+  let _selected = null;
+  let _outlineBox = null;
+  let _hovered = null;
+  let _rayThrottle = 0;
+
+  // ── Selection ──
+  const Selection = {
+    get current() { return _selected; },
+
+    select(model) {
+      if (_selected) this._clearOutline(_selected);
+      _selected = model;
+      if (!model) {
+        Engine.transformControls.detach();
+        UI.inspector.hide();
+        return;
+      }
+      Engine.transformControls.attach(model);
+      this._drawOutline(model);
+      UI.inspector.show(model);
+    },
+
+    deselect() {
+      this.select(null);
+    },
+
+    _drawOutline(model) {
+      if (_outlineBox) Engine.scene.remove(_outlineBox);
+      const box = new THREE.Box3().setFromObject(model);
+      _outlineBox = new THREE.Box3Helper(box, new THREE.Color('#00c8ff'));
+      Engine.scene.add(_outlineBox);
+    },
+
+    _clearOutline() {
+      if (_outlineBox) {
+        Engine.scene.remove(_outlineBox);
+        _outlineBox = null;
+      }
+    }
+  };
+
+  // ── Mouse events ──
+  function initMouseEvents(canvasEl) {
+    let mouseDownPos = { x: 0, y: 0 };
+
+    canvasEl.addEventListener('mousedown', e => {
+      mouseDownPos = { x: e.clientX, y: e.clientY };
+    });
+
+    canvasEl.addEventListener('mouseup', e => {
+      if (e.button !== 0) return;
+      const dx = Math.abs(e.clientX - mouseDownPos.x);
+      const dy = Math.abs(e.clientY - mouseDownPos.y);
+      if (dx > 5 || dy > 5) return; // sürükleme — seçme
+
+      const model = Engine.raycast(e);
+      if (model) Selection.select(model);
+      else Selection.deselect();
+    });
+
+    // Hover throttle
+    canvasEl.addEventListener('mousemove', e => {
+      const now = performance.now();
+      if (now - _rayThrottle < 80) return;
+      _rayThrottle = now;
+
+      const model = Engine.raycast(e);
+      if (model !== _hovered) {
+        if (_hovered) _setEmissive(_hovered, 0);
+        _hovered = model;
+        if (model && model !== _selected) _setEmissive(model, 0.15);
+        canvasEl.style.cursor = model ? 'pointer' : 'default';
+      }
+    });
+
+    // Double click — focus
+    canvasEl.addEventListener('dblclick', e => {
+      const model = Engine.raycast(e);
+      if (!model) return;
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      Engine.orbitControls.target.copy(center);
+      const dist = Math.max(size.x, size.y, size.z) * 2.0;
+      const dir = Engine.camera.position.clone().sub(center).normalize();
+      Engine.camera.position.copy(center).addScaledVector(dir, dist);
+      Engine.orbitControls.update();
+    });
+
+    canvasEl.addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  function _setEmissive(model, val) {
+    model.traverse(c => {
+      if (c.isMesh && c.material?.emissive) {
+        c.material.emissive.setScalar(val);
+      }
+    });
+  }
+
+  // ── Hotkeys ──
+  function initHotkeys() {
+    window.addEventListener('keydown', e => {
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const tc = Engine.transformControls;
+
+      switch(e.key) {
+        case 'w': case 'W': tc.setMode('translate'); UI.log('↔ Taşı'); break;
+        case 'e': case 'E': tc.setMode('rotate');    UI.log('↻ Döndür'); break;
+        case 'r': case 'R': tc.setMode('scale');     UI.log('⤡ Boyut'); break;
+
+        case ' ':
+          e.preventDefault();
+          const s = tc.space === 'world' ? 'local' : 'world';
+          tc.setSpace(s);
+          UI.log(`Space: ${s}`);
+          break;
+
+        case 'Delete':
+        case 'Backspace':
+          if (_selected) {
+            const m = _selected;
+            Selection.deselect();
+            Engine.removeModel(m);
+            UI.log('🗑 Silindi');
+            UI.gallery.render();
+          }
+          break;
+
+        case 'Escape':
+          Selection.deselect();
+          break;
+
+        case 'd':
+        case 'D':
+          if ((e.ctrlKey || e.metaKey) && _selected) {
+            e.preventDefault();
+            _duplicate(_selected);
+          }
+          break;
+
+        case 'f':
+        case 'F':
+          if (_selected) {
+            const box = new THREE.Box3().setFromObject(_selected);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            Engine.orbitControls.target.copy(center);
+            const dist = Math.max(size.x, size.y, size.z) * 2;
+            const dir = Engine.camera.position.clone().sub(center).normalize();
+            Engine.camera.position.copy(center).addScaledVector(dir, dist);
+            Engine.orbitControls.update();
+          }
+          break;
+      }
+    });
+  }
+
+  function _duplicate(model) {
+    const cl = model.clone(true);
+    cl.position.x += 1;
+    cl.name = model.name + '_copy';
+    cl.userData = { ...model.userData };
+    Engine.userGroup.add(cl);
+    Selection.select(cl);
+    UI.log('📋 Kopyalandı');
+    UI.gallery.render();
+  }
+
+  // ── Init ──
+  function init(canvasEl) {
+    initMouseEvents(canvasEl);
+    initHotkeys();
+  }
+
+  return { init, Selection };
+})();
+
+
+// ── api.js ──
+/* ═══════════════════════════════════════════
+   NEXUS ENGINE — api.js
+   Meshy API. Retry. Timeout. Temiz.
+═══════════════════════════════════════════ */
+
+const API = (() => {
+  const KEY = 'msy_z0xbANon3MQeSUqywQTNgljSTPZT2KgRqaZ9';
+  const BASE = 'https://api.meshy.ai';
+  const POLL_INTERVAL = 5000;
+  const MAX_WAIT = 600000;
+
+  const HEADERS = {
+    'Authorization': `Bearer ${KEY}`,
+    'Content-Type': 'application/json',
+  };
+
+  // ── Text → 3D ──
+  async function textTo3D(prompt, onProgress) {
+    const res = await fetch(`${BASE}/v2/text-to-3d`, {
+      method: 'POST',
+      headers: HEADERS,
+      body: JSON.stringify({
+        mode: 'preview',
+        prompt,
+        art_style: 'realistic',
+        negative_prompt: 'low quality, blurry',
+      })
+    });
+
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const data = await res.json();
+    const taskId = data.result;
+    if (!taskId) throw new Error('Task ID alınamadı');
+
+    return await _pollTask(taskId, 'text-to-3d', onProgress);
+  }
+
+  // ── Image → 3D ──
+  async function imageTo3D(imageDataUrl, onProgress) {
+    const res = await fetch(`${BASE}/v2/image-to-3d`, {
+      method: 'POST',
+      headers: HEADERS,
+      body: JSON.stringify({ image_url: imageDataUrl, enable_pbr: true })
+    });
+
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const data = await res.json();
+    const taskId = data.result;
+    if (!taskId) throw new Error('Task ID alınamadı');
+
+    return await _pollTask(taskId, 'image-to-3d', onProgress);
+  }
+
+  // ── Poll ──
+  async function _pollTask(taskId, type, onProgress) {
+    const start = Date.now();
+
+    while (Date.now() - start < MAX_WAIT) {
+      await _sleep(POLL_INTERVAL);
+
+      const res = await fetch(`${BASE}/v2/${type}/${taskId}`, { headers: HEADERS });
+      if (!res.ok) throw new Error(`Poll ${res.status}`);
+      const data = await res.json();
+
+      if (onProgress) onProgress(data.progress || 0, data.status);
+
+      if (data.status === 'SUCCEEDED') {
+        const glbUrl = data.model_urls?.glb;
+        if (!glbUrl) throw new Error('GLB URL yok');
+        return await _downloadGLB(glbUrl);
+      }
+
+      if (data.status === 'FAILED') {
+        throw new Error(data.task_error?.message || 'Meshy task başarısız');
+      }
+    }
+
+    throw new Error('Zaman aşımı (10 dakika)');
+  }
+
+  // ── GLB indir ──
+  async function _downloadGLB(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`GLB indirme ${res.status}`);
+    return await res.arrayBuffer();
+  }
+
+  function _sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+
+  // ── Trellis Image → 3D (Replicate via Netlify Function) ──
+  const TRELLIS = (() => {
+    const VERSION = 'e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c';
+    const PROXY   = '/.netlify/functions/replicate';
+    const POLL_MS = 3000;
+    const MAX_ATTEMPTS = 80; // ~4 dakika
+
+    async function _post(body) {
+      const res = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`Proxy ${res.status}: ${await res.text()}`);
+      return res.json();
+    }
+
+    async function imageToGLB(imageDataUrl, textureSize, onProgress) {
+      // Prediction oluştur
+      const pred = await _post({
+        action: 'create',
+        version: VERSION,
+        input: {
+          images: [imageDataUrl],
+          texture_size: textureSize || 1024,
+          mesh_simplify: 0.95,
+          generate_model: true,
+          generate_color: false,
+          randomize_seed: true,
+          ss_sampling_steps: 12,
+          slat_sampling_steps: 12,
+          ss_guidance_strength: 7.5,
+          slat_guidance_strength: 3,
+        },
+      });
+
+      if (!pred.id) throw new Error('Prediction ID alınamadı');
+
+      // Poll
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        const pd = await _post({ action: 'poll', predictionId: pred.id });
+
+        const pct = Math.min(10 + i * 1.5, 90);
+        if (onProgress) onProgress(Math.round(pct), pd.status || 'processing');
+
+        if (pd.status === 'succeeded') {
+          const glbUrl = pd.output?.model_file;
+          if (!glbUrl) throw new Error('model_file URL yok');
+          return await _downloadGLB(glbUrl);
+        }
+        if (pd.status === 'failed') {
+          throw new Error('Trellis başarısız: ' + (pd.error || 'bilinmeyen hata'));
+        }
+      }
+      throw new Error('Trellis zaman aşımı');
+    }
+
+    async function _downloadGLB(url) {
+      const res = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'download', url }),
+      });
+      if (!res.ok) throw new Error(`GLB download ${res.status}`);
+      // Netlify Function base64 döner
+      const b64 = await res.text();
+      const bin = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));
+      return bin.buffer;
+    }
+
+    return { imageToGLB };
+  })();
+
+  return { textTo3D, imageTo3D, TRELLIS };
+})();
+
+
+// ── ui.js ──
+/* ═══════════════════════════════════════════
+   NEXUS ENGINE — ui.js
+   Paneller, galeri, log, inspector.
+   Sadece DOM. Engine/Editor'a dokunmaz.
+═══════════════════════════════════════════ */
+
+const UI = (() => {
+
+  // ── Log ──
+  function log(msg, type = '') {
+    const el = document.getElementById('LOG');
+    if (!el) return;
+    const d = document.createElement('div');
+    d.className = 'log-line ' + type;
+    d.textContent = new Date().toLocaleTimeString('tr-TR') + ' ' + msg;
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+    // Max 80 satır
+    while (el.children.length > 80) el.removeChild(el.firstChild);
+  }
+
+  // ── Inspector ──
+  const inspector = {
+    show(model) {
+      const el = document.getElementById('INS');
+      if (!el) return;
+      el.classList.add('active');
+      const nameEl = document.getElementById('INS_NAME');
+      if (nameEl) nameEl.textContent = model.name || 'model';
+      // Pozisyon
+      _updateInspectorValues(model);
+    },
+    hide() {
+      const el = document.getElementById('INS');
+      if (el) el.classList.remove('active');
+    },
+    refresh(model) {
+      if (model) _updateInspectorValues(model);
+    }
+  };
+
+  function _updateInspectorValues(model) {
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val.toFixed(2);
+    };
+    set('INS_PX', model.position.x);
+    set('INS_PY', model.position.y);
+    set('INS_PZ', model.position.z);
+    set('INS_RY', THREE.MathUtils.radToDeg(model.rotation.y));
+    set('INS_SX', model.scale.x);
+  }
+
+  // ── Gallery ──
+  // IndexedDB ile — RAM'e buffer koymuyoruz
+  const gallery = {
+    _items: [], // { id, name, prompt, buffer }
+
+    add(name, prompt, buffer) {
+      const id = 'mdl_' + Date.now();
+      this._items.push({ id, name, prompt, buffer });
+      this.render();
+      return id;
+    },
+
+    remove(id) {
+      this._items = this._items.filter(i => i.id !== id);
+      this.render();
+    },
+
+    render() {
+      const el = document.getElementById('GALLERY');
+      if (!el) return;
+      const countEl = document.getElementById('GALLERY_COUNT');
+      if (countEl) countEl.textContent = this._items.length;
+
+      if (!this._items.length) {
+        el.innerHTML = '<div class="gallery-empty">Henüz model yok</div>';
+        return;
+      }
+
+      el.innerHTML = this._items.map(item => `
+        <div class="gallery-item" data-id="${item.id}">
+          <div class="gallery-thumb">🗿</div>
+          <div class="gallery-name">${item.name}</div>
+          <div class="gallery-actions">
+            <button class="btn-add" onclick="UI.gallery.load('${item.id}')">▶ Ekle</button>
+            <button class="btn-del" onclick="UI.gallery.remove('${item.id}')">✕</button>
+          </div>
+        </div>
+      `).join('');
+    },
+
+    async load(id) {
+      const item = this._items.find(i => i.id === id);
+      if (!item) return;
+      const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
+      try {
+        Engine.clearModels();
+        const model = await Engine.loadModel(item.buffer, item.name, targetSize);
+        Editor.Selection.select(model);
+        log(`📦 "${item.name}" sahneye yüklendi`, 'lok');
+      } catch(e) {
+        log('❌ Model yüklenemedi: ' + e.message, 'lw');
+      }
+    }
+  };
+
+  // ── Tab sistemi ──
+  function switchTab(name) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    const pane = document.getElementById('PANE_' + name.toUpperCase());
+    const btn = document.getElementById('TAB_' + name.toUpperCase());
+    if (pane) pane.style.display = '';
+    if (btn) btn.classList.add('active');
+  }
+
+  // ── Kredi ──
+  const credits = {
+    _val: 100,
+    get() { return this._val; },
+    deduct(n) {
+      this._val = Math.max(0, this._val - n);
+      this._render();
+      return this._val >= 0;
+    },
+    add(n) {
+      this._val += n;
+      this._render();
+    },
+    _render() {
+      const el = document.getElementById('CREDITS');
+      if (el) el.textContent = this._val;
+    }
+  };
+
+  // ── Generate ──
+  async function runGenerate() {
+    const prompt = document.getElementById('PROMPT')?.value?.trim();
+    if (!prompt) { log('⚠ Prompt gir', 'lw'); return; }
+    if (credits.get() < 10) { log('⚠ Yetersiz kredi', 'lw'); return; }
+
+    const btn = document.getElementById('BTN_GENERATE');
+    if (btn) btn.disabled = true;
+    log(`🧠 Üretiliyor: "${prompt}"`, 'lai');
+
+    try {
+      const buffer = await API.textTo3D(prompt, (pct, status) => {
+        log(`⟳ ${status} %${pct}`, 'lai');
+      });
+
+      const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
+      Engine.clearModels();
+      const model = await Engine.loadModel(buffer, prompt.slice(0, 20), targetSize);
+      Editor.Selection.select(model);
+
+      const id = gallery.add(prompt.slice(0, 20), prompt, buffer);
+      credits.deduct(10);
+      log('✅ Model hazır!', 'lok');
+    } catch(e) {
+      log('❌ Hata: ' + e.message, 'lw');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  let _imgApi = 'meshy'; // 'meshy' | 'trellis'
+
+  function setImgApi(api) {
+    _imgApi = api;
+    const mb = document.getElementById('IMG_API_MESHY');
+    const tb = document.getElementById('IMG_API_TRELLIS');
+    const opts = document.getElementById('TRELLIS_OPTS');
+    const active = 'background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);';
+    const inactive = '';
+    if (mb) mb.style.cssText = 'flex:1;font-size:7px;padding:4px;' + (api === 'meshy' ? active : inactive);
+    if (tb) tb.style.cssText = 'flex:1;font-size:7px;padding:4px;' + (api === 'trellis' ? active : inactive);
+    if (opts) opts.style.display = api === 'trellis' ? 'block' : 'none';
+  }
+
+  async function runImageTo3D() {
+    const input = document.getElementById('IMG_INPUT');
+    if (!input?.files?.length) { log('⚠ Görsel seç', 'lw'); return; }
+    if (credits.get() < 15) { log('⚠ Yetersiz kredi', 'lw'); return; }
+
+    const btn = document.getElementById('BTN_IMG');
+    if (btn) btn.disabled = true;
+
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      try {
+        let buffer;
+        if (_imgApi === 'trellis') {
+          log('🔷 Trellis Image→3D başlıyor...', 'lai');
+          const texSize = parseInt(document.getElementById('TRELLIS_TEX')?.value || 1024);
+          buffer = await API.TRELLIS.imageToGLB(ev.target.result, texSize, (pct, status) => {
+            log(`⟳ Trellis ${status} %${pct}`, 'lai');
+          });
+        } else {
+          log('🖼 Meshy Görsel → 3D dönüştürülüyor...', 'lai');
+          buffer = await API.imageTo3D(ev.target.result, (pct, status) => {
+            log(`⟳ ${status} %${pct}`, 'lai');
+          });
+        }
+        const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
+        Engine.clearModels();
+        const model = await Engine.loadModel(buffer, 'gorsel_model', targetSize);
+        Editor.Selection.select(model);
+        gallery.add('Görsel Model', 'gorsel_model', buffer);
+        credits.deduct(15);
+        log('✅ Dönüştürme tamam!', 'lok');
+      } catch(e) {
+        log('❌ Hata: ' + e.message, 'lw');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+
+  // ── STL Export ──
+  function exportSTL() {
+    const group = Engine.userGroup;
+    if (!group.children.length) { log('⚠ Sahne boş', 'lw'); return; }
+
+    const unit = document.getElementById('PRINT_UNIT')?.value || 'mm';
+    const size = parseFloat(document.getElementById('PRINT_SIZE')?.value || 100);
+    const scaleFactor = unit === 'cm' ? size * 10 : unit === 'inch' ? size * 25.4 : size;
+
+    const box = new THREE.Box3().setFromObject(group);
+    const dim = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(dim.x, dim.y, dim.z);
+    const s = maxDim > 0 ? scaleFactor / maxDim : 1;
+
+    const meshes = [];
+    group.traverse(c => { if (c.isMesh) meshes.push(c); });
+
+    let triCount = 0;
+    meshes.forEach(m => {
+      const g = m.geometry;
+      triCount += g.index ? g.index.count / 3 : g.attributes.position.count / 3;
+    });
+
+    const buf = new ArrayBuffer(84 + triCount * 50);
+    const view = new DataView(buf);
+    for (let i = 0; i < 80; i++) view.setUint8(i, 0);
+    view.setUint32(80, triCount, true);
+
+    let offset = 84;
+    const v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), n = new THREE.Vector3();
+
+    meshes.forEach(mesh => {
+      const geo = mesh.geometry.clone();
+      geo.applyMatrix4(mesh.matrixWorld);
+      const pos = geo.attributes.position;
+      const idx = geo.index;
+      const count = idx ? idx.count / 3 : pos.count / 3;
+      for (let i = 0; i < count; i++) {
+        const a = idx ? idx.getX(i*3) : i*3;
+        const b = idx ? idx.getX(i*3+1) : i*3+1;
+        const c = idx ? idx.getX(i*3+2) : i*3+2;
+        v0.fromBufferAttribute(pos, a).multiplyScalar(s);
+        v1.fromBufferAttribute(pos, b).multiplyScalar(s);
+        v2.fromBufferAttribute(pos, c).multiplyScalar(s);
+        n.crossVectors(v1.clone().sub(v0), v2.clone().sub(v0)).normalize();
+        [n.x,n.y,n.z,v0.x,v0.y,v0.z,v1.x,v1.y,v1.z,v2.x,v2.y,v2.z].forEach(f => {
+          view.setFloat32(offset, f, true); offset += 4;
+        });
+        view.setUint16(offset, 0, true); offset += 2;
+      }
+    });
+
+    const blob = new Blob([buf], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `nexus_${size}${unit}.stl`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    log(`🖨 STL export: ${size}${unit}`, 'lok');
+  }
+
+  return {
+    log, inspector, gallery, switchTab, credits,
+    runGenerate, runImageTo3D, exportSTL
+  };
+})();
+
+</script>
+
+<script>
+// ── BOOT ──
+document.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('CANVAS');
+  Engine.init(canvas);
+  Editor.init(canvas);
+
+  // Tab başlangıç
+  UI.switchTab('prompt');
+  UI.gallery.render();
+  UI.log('✓ NEXUS ENGINE Beta 8.0 hazır', 'lok');
+  UI.log('Sol tık: orbit · Sağ tık: pan · Scroll: zoom', '');
+  UI.log('W/E/R: taşı/döndür/boyut · Del: sil · Ctrl+D: kopyala', '');
+
+  // TransformControls değişince inspector güncelle
+  Engine.transformControls.addEventListener('objectChange', () => {
+    const sel = Editor.Selection.current;
+    if (sel) UI.inspector.refresh(sel);
+  });
+
+  // Drag & drop görsel yükleme
+  const drop = document.getElementById('IMG_DROP');
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.borderColor = 'var(--accent)'; });
+  drop.addEventListener('dragleave', () => { drop.style.borderColor = 'rgba(0,200,255,.3)'; });
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.style.borderColor = 'rgba(0,200,255,.3)';
+    const file = e.dataTransfer.files[0];
+    if (file?.type.startsWith('image/')) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.getElementById('IMG_INPUT').files = dt.files;
+      document.getElementById('BTN_IMG').disabled = false;
+      UI.log('📸 Görsel yüklendi: ' + file.name, 'lok');
+    }
+  });
+});
+</script>
+
+</body>
+</html>
