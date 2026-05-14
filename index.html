@@ -1245,7 +1245,7 @@ const UI = (() => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     const pane = document.getElementById('PANE_' + name.toUpperCase());
     const btn = document.getElementById('TAB_' + name.toUpperCase());
-    if (pane) pane.style.display = '';
+    if (pane) pane.style.display = 'block';
     if (btn) btn.classList.add('active');
   }
 
