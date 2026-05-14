@@ -401,13 +401,15 @@ textarea.prompt-input {
     <!-- IMAGE -->
     <div class="panel-section tab-pane" id="PANE_IMAGE">
       <div class="panel-title">🖼 GÖRSELDEN 3D ÜRET</div>
-      <div class="img-drop" id="IMG_DROP" onclick="document.getElementById('IMG_INPUT').click()">
+      <div class="img-drop" id="IMG_DROP" onclick="document.getElementById('IMG_INPUT').click()" 
+        ondragover="event.preventDefault()" 
+        ondrop="event.preventDefault();document.getElementById('IMG_INPUT').files=event.dataTransfer.files;document.getElementById('BTN_IMG').disabled=false;document.getElementById('IMG_DROP').style.borderColor='var(--accent)';UI.log('📸 Görsel yüklendi');">
         <div style="font-size:28px">📸</div>
         <div style="font-size:8px;color:var(--muted)">Tıkla veya sürükle</div>
         <div style="font-size:7px;color:var(--muted)">PNG / JPG / WEBP</div>
       </div>
       <input type="file" id="IMG_INPUT" accept="image/*" style="display:none"
-        onchange="document.getElementById('BTN_IMG').disabled=false; UI.log('📸 Görsel yüklendi')">
+        onchange="if(this.files&&this.files.length>0){document.getElementById('BTN_IMG').disabled=false;document.getElementById('IMG_DROP').style.borderColor='var(--accent)';UI.log('📸 Görsel yüklendi: '+this.files[0].name);}">
       <div style="display:flex;gap:4px;margin-bottom:6px;">
         <button class="tab-btn" id="IMG_API_MESHY" onclick="UI.setImgApi('meshy')" style="flex:1;font-size:7px;padding:4px;background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);">Meshy</button>
         <button class="tab-btn" id="IMG_API_TRELLIS" onclick="UI.setImgApi('trellis')" style="flex:1;font-size:7px;padding:4px;">Trellis</button>
@@ -1314,35 +1316,36 @@ const UI = (() => {
 
   async function runImageTo3D() {
     const input = document.getElementById('IMG_INPUT');
-    if (!input?.files?.length) { log('⚠ Görsel seç', 'lw'); return; }
-    if (credits.get() < 15) { log('⚠ Yetersiz kredi', 'lw'); return; }
+    if (!input || !input.files || input.files.length === 0) { log('⚠ Önce görsel seç!', 'lw'); return; }
+    if (credits.get() < 15) { log('⚠ Yetersiz kredi (min 15)', 'lw'); return; }
 
     const btn = document.getElementById('BTN_IMG');
     if (btn) btn.disabled = true;
 
     const reader = new FileReader();
+    reader.onerror = () => { log('❌ Dosya okunamadı', 'lw'); if (btn) btn.disabled = false; };
     reader.onload = async ev => {
       try {
         let buffer;
         if (_imgApi === 'trellis') {
-          log('🔷 Trellis Image→3D başlıyor...', 'lai');
+          log('🔷 Trellis Image→3D başlıyor... (~2-3 dk)', 'lai');
           const texSize = parseInt(document.getElementById('TRELLIS_TEX')?.value || 1024);
           buffer = await API.TRELLIS.imageToGLB(ev.target.result, texSize, (pct, status) => {
-            log(`⟳ Trellis ${status} %${pct}`, 'lai');
+            log('⟳ Trellis: ' + status + ' %' + pct, 'lai');
           });
         } else {
           log('🖼 Meshy Görsel → 3D dönüştürülüyor...', 'lai');
           buffer = await API.imageTo3D(ev.target.result, (pct, status) => {
-            log(`⟳ ${status} %${pct}`, 'lai');
+            log('⟳ ' + status + ' %' + pct, 'lai');
           });
         }
         const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
         Engine.clearModels();
-        const model = await Engine.loadModel(buffer, 'gorsel_model', targetSize);
+        const model = await Engine.loadModel(buffer, 'trellis_model', targetSize);
         Editor.Selection.select(model);
-        gallery.add('Görsel Model', 'gorsel_model', buffer);
+        gallery.add('Trellis Model', 'trellis_model', buffer);
         credits.deduct(15);
-        log('✅ Dönüştürme tamam!', 'lok');
+        log('✅ Model hazır!', 'lok');
       } catch(e) {
         log('❌ Hata: ' + e.message, 'lw');
       } finally {
