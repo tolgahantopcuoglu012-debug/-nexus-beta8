@@ -1275,21 +1275,97 @@ const UI = (() => {
 
     const btn = document.getElementById('BTN_GENERATE');
     if (btn) btn.disabled = true;
-    log(`🧠 Üretiliyor: "${prompt}"`, 'lai');
+    log('🎨 Görsel üretiliyor...', 'lai');
 
     try {
-      const buffer = await API.textTo3D(prompt, (pct, status) => {
-        log(`⟳ ${status} %${pct}`, 'lai');
+      // ADIM 1: Flux Schnell ile görsel üret (kullanıcı görmez)
+      const fluxPrompt = prompt + ', isolated object, white background, studio lighting, product photo, high quality, detailed, 3D render style';
+      
+      const fluxPred = await fetch('/.netlify/functions/replicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          model: 'black-forest-labs/flux-schnell',
+          input: {
+            prompt: fluxPrompt,
+            num_outputs: 1,
+            aspect_ratio: '1:1',
+            output_format: 'png',
+            output_quality: 90
+          }
+        })
+      }).then(r => r.json());
+
+      let imageUrl = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const pd = await fetch('/.netlify/functions/replicate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'poll', predictionId: fluxPred.id })
+        }).then(r => r.json());
+        if (pd.status === 'succeeded') { imageUrl = pd.output?.[0]; break; }
+        if (pd.status === 'failed') throw new Error('Görsel üretim başarısız');
+      }
+      if (!imageUrl) throw new Error('Görsel URL alınamadı');
+
+      log('🔷 3D modele dönüştürülüyor...', 'lai');
+
+      // ADIM 2: Trellis ile 3D'ye çevir
+      const trellisPred = await fetch('/.netlify/functions/replicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          version: 'e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c',
+          input: {
+            images: [imageUrl],
+            texture_size: 1024,
+            mesh_simplify: 0.95,
+            generate_model: true,
+            generate_color: true,
+            randomize_seed: true,
+            ss_sampling_steps: 12,
+            slat_sampling_steps: 12,
+            ss_guidance_strength: 7.5,
+            slat_guidance_strength: 3
+          }
+        })
+      }).then(r => r.json());
+
+      let glbUrl = null;
+      for (let i = 0; i < 80; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pd = await fetch('/.netlify/functions/replicate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'poll', predictionId: trellisPred.id })
+        }).then(r => r.json());
+        log('⟳ Trellis: ' + pd.status + ' %' + Math.min(10 + i * 2, 90), 'lai');
+        if (pd.status === 'succeeded') { glbUrl = pd.output?.model_file; break; }
+        if (pd.status === 'failed') throw new Error('3D dönüşüm başarısız');
+      }
+      if (!glbUrl) throw new Error('GLB URL alınamadı');
+
+      // GLB indir
+      const dlRes = await fetch('/.netlify/functions/replicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'download', url: glbUrl })
       });
+      const json = await dlRes.json();
+      const bin = Uint8Array.from(atob(json.data), ch => ch.charCodeAt(0));
+      const buffer = bin.buffer;
 
       const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
       Engine.clearModels();
       const model = await Engine.loadModel(buffer, prompt.slice(0, 20), targetSize);
       Editor.Selection.select(model);
-
-      const id = gallery.add(prompt.slice(0, 20), prompt, buffer);
+      gallery.add(prompt.slice(0, 20), prompt, buffer);
       credits.deduct(10);
       log('✅ Model hazır!', 'lok');
+
     } catch(e) {
       log('❌ Hata: ' + e.message, 'lw');
     } finally {
