@@ -1054,7 +1054,7 @@ const API = (() => {
   // ── Trellis Image → 3D (Replicate via Netlify Function) ──
   const TRELLIS = (() => {
     const VERSION = 'e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c';
-    const PROXY   = '/.netlify/functions/replicate';
+    const PROXY   = 'https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev';
     const POLL_MS = 3000;
     const MAX_ATTEMPTS = 80; // ~4 dakika
 
@@ -1281,7 +1281,7 @@ const UI = (() => {
       // ADIM 1: Flux Schnell ile görsel üret (kullanıcı görmez)
       const fluxPrompt = prompt + ', isolated object, white background, studio lighting, product photo, high quality, detailed, 3D render style';
       
-      const fluxPred = await fetch('/.netlify/functions/replicate', {
+      const fluxPred = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1300,7 +1300,7 @@ const UI = (() => {
       let imageUrl = null;
       for (let i = 0; i < 30; i++) {
         await new Promise(r => setTimeout(r, 2000));
-        const pd = await fetch('/.netlify/functions/replicate', {
+        const pd = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'poll', predictionId: fluxPred.id })
@@ -1313,7 +1313,7 @@ const UI = (() => {
       log('🔷 3D modele dönüştürülüyor...', 'lai');
 
       // ADIM 2: Trellis ile 3D'ye çevir
-      const trellisPred = await fetch('/.netlify/functions/replicate', {
+      const trellisPred = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1337,7 +1337,7 @@ const UI = (() => {
       let glbUrl = null;
       for (let i = 0; i < 80; i++) {
         await new Promise(r => setTimeout(r, 3000));
-        const pd = await fetch('/.netlify/functions/replicate', {
+        const pd = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'poll', predictionId: trellisPred.id })
@@ -1349,7 +1349,7 @@ const UI = (() => {
       if (!glbUrl) throw new Error('GLB URL alınamadı');
 
       // GLB indir
-      const dlRes = await fetch('/.netlify/functions/replicate', {
+      const dlRes = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'download', url: glbUrl })
