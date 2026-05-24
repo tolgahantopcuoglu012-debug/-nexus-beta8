@@ -1231,7 +1231,13 @@ const Preprocess = (() => {
     if (onProgress) onProgress('Keskinleştiriliyor...');
     _applySharpen(ctx, canvas.width, canvas.height);
 
-    return await _removeBackground(canvas.toDataURL('image/png'), onProgress);
+    const processed = canvas.toDataURL('image/png');
+    try {
+      return await _removeBackground(processed, onProgress);
+    } catch (e) {
+      if (onProgress) onProgress('⚠ Arka plan kaldırılamadı, orijinal kullanılıyor: ' + e.message);
+      return processed;
+    }
   }
 
   return { run };
