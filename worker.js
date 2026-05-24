@@ -17,6 +17,17 @@ function err(msg, status = 400) {
   return new Response(msg, { status, headers: CORS });
 }
 
+async function fetchWithBackoff(url, options, maxRetries = 4) {
+  let delay = 1000;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status !== 429) return res;
+    if (attempt === maxRetries) return res;
+    await new Promise(r => setTimeout(r, delay));
+    delay *= 2;
+  }
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
@@ -33,7 +44,7 @@ export default {
       return err('Invalid JSON');
     }
 
-    const REPLICATE_KEY = env.REPLICATE_API_KEY || 'r8_HBUaxBMLz2JDs4T6yEsmCvYgrFcNjQ021WFFU';
+    const REPLICATE_KEY = env.REPLICATE_API_KEY;
     const AUTH = {
       'Authorization': `Bearer ${REPLICATE_KEY}`,
       'Content-Type': 'application/json',
@@ -49,7 +60,7 @@ export default {
         const payload = { input: body.input };
         if (body.version) payload.version = body.version;
 
-        const res = await fetch(url, { method: 'POST', headers: AUTH, body: JSON.stringify(payload) });
+        const res = await fetchWithBackoff(url, { method: 'POST', headers: AUTH, body: JSON.stringify(payload) });
         const data = await res.json();
         return json(data, res.status);
       }
@@ -57,7 +68,7 @@ export default {
       // ── POLL ──
       if (body.action === 'poll') {
         if (!body.predictionId) return err('predictionId gerekli');
-        const res = await fetch(`${REPLICATE_BASE}/predictions/${body.predictionId}`, { headers: AUTH });
+        const res = await fetchWithBackoff(`${REPLICATE_BASE}/predictions/${body.predictionId}`, { headers: AUTH });
         const data = await res.json();
         return json(data, res.status);
       }
@@ -68,7 +79,12 @@ export default {
         const res = await fetch(body.url);
         if (!res.ok) throw new Error(`Download upstream ${res.status}`);
         const buffer = await res.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        const uint8 = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < uint8.length; i += 8192) {
+          binary += String.fromCharCode(...uint8.subarray(i, i + 8192));
+        }
+        const base64 = btoa(binary);
         return json({ data: base64 });
       }
 
