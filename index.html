@@ -1075,13 +1075,13 @@ const API = (() => {
         version: VERSION,
         input: {
           images: [imageDataUrl],
-          texture_size: textureSize || 1024,
+          texture_size: textureSize || 2048,
           mesh_simplify: 0.95,
           generate_model: true,
           generate_color: true,
           randomize_seed: true,
-          ss_sampling_steps: 12,
-          slat_sampling_steps: 12,
+          ss_sampling_steps: 50,
+          slat_sampling_steps: 50,
           ss_guidance_strength: 7.5,
           slat_guidance_strength: 3,
         },
@@ -1321,13 +1321,13 @@ const UI = (() => {
           version: 'e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c',
           input: {
             images: [imageUrl],
-            texture_size: 1024,
+            texture_size: 2048,
             mesh_simplify: 0.95,
             generate_model: true,
             generate_color: true,
             randomize_seed: true,
-            ss_sampling_steps: 12,
-            slat_sampling_steps: 12,
+            ss_sampling_steps: 50,
+            slat_sampling_steps: 50,
             ss_guidance_strength: 7.5,
             slat_guidance_strength: 3
           }
