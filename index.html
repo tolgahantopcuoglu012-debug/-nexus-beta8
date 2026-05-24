@@ -637,7 +637,7 @@ const Engine = (() => {
   }
 
   // ── Model yükle ──
-  function loadModel(buffer, name, targetSize) {
+  function loadModel(buffer, name, targetSize, keepMaterials = false) {
     return new Promise((resolve, reject) => {
       const loader = new THREE.GLTFLoader();
       loader.parse(buffer, '', gltf => {
@@ -657,8 +657,8 @@ const Engine = (() => {
         model.position.set(-center.x, -box1.min.y, -center.z);
         model.updateMatrixWorld(true);
 
-        // Materyal — matcap
-        if (_matcapTex) {
+        // Materyal — matcap (yalnızca texture yoksa)
+        if (!keepMaterials && _matcapTex) {
           const mat = new THREE.MeshMatcapMaterial({ matcap: _matcapTex });
           model.traverse(c => {
             if (c.isMesh) c.material = mat.clone();
@@ -1078,7 +1078,7 @@ const API = (() => {
           texture_size: textureSize || 1024,
           mesh_simplify: 0.95,
           generate_model: true,
-          generate_color: false,
+          generate_color: true,
           randomize_seed: true,
           ss_sampling_steps: 12,
           slat_sampling_steps: 12,
@@ -1360,7 +1360,7 @@ const UI = (() => {
 
       const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
       Engine.clearModels();
-      const model = await Engine.loadModel(buffer, prompt.slice(0, 20), targetSize);
+      const model = await Engine.loadModel(buffer, prompt.slice(0, 20), targetSize, true);
       Editor.Selection.select(model);
       gallery.add(prompt.slice(0, 20), prompt, buffer);
       credits.deduct(10);
@@ -1414,7 +1414,7 @@ const UI = (() => {
         }
         const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
         Engine.clearModels();
-        const model = await Engine.loadModel(buffer, 'trellis_model', targetSize);
+        const model = await Engine.loadModel(buffer, 'trellis_model', targetSize, true);
         Editor.Selection.select(model);
         gallery.add('Trellis Model', 'trellis_model', buffer);
         credits.deduct(15);
