@@ -607,56 +607,8 @@ const Engine = (() => {
   function _postprocessModel(model) {
     model.traverse(child => {
       if (!child.isMesh) return;
-      let geo = child.geometry;
-
-      try { geo = THREE.BufferGeometryUtils.mergeVertices(geo, 1e-4); } catch (_) {}
-
-      if (geo.hasAttribute('normal')) geo.deleteAttribute('normal');
-      geo.computeVertexNormals();
-
-      // 2-pass Laplacian smooth (30% blend toward neighbor avg per pass)
-      try {
-        const pos = geo.attributes.position;
-        const idx = geo.index ? geo.index.array : null;
-        const n = pos.count;
-        const neighbors = Array.from({ length: n }, () => new Set());
-
-        if (idx) {
-          for (let i = 0; i < idx.length; i += 3) {
-            const a = idx[i], b = idx[i+1], c = idx[i+2];
-            neighbors[a].add(b); neighbors[a].add(c);
-            neighbors[b].add(a); neighbors[b].add(c);
-            neighbors[c].add(a); neighbors[c].add(b);
-          }
-        }
-
-        for (let iter = 0; iter < 2; iter++) {
-          const nx = new Float32Array(n * 3);
-          for (let v = 0; v < n; v++) {
-            const nb = [...neighbors[v]];
-            if (!nb.length) {
-              nx[v*3] = pos.getX(v); nx[v*3+1] = pos.getY(v); nx[v*3+2] = pos.getZ(v);
-              continue;
-            }
-            let sx = 0, sy = 0, sz = 0;
-            for (const j of nb) { sx += pos.getX(j); sy += pos.getY(j); sz += pos.getZ(j); }
-            const inv = 1 / nb.length;
-            nx[v*3]   = pos.getX(v) * 0.7 + sx * inv * 0.3;
-            nx[v*3+1] = pos.getY(v) * 0.7 + sy * inv * 0.3;
-            nx[v*3+2] = pos.getZ(v) * 0.7 + sz * inv * 0.3;
-          }
-          for (let v = 0; v < n; v++) pos.setXYZ(v, nx[v*3], nx[v*3+1], nx[v*3+2]);
-          pos.needsUpdate = true;
-        }
-      } catch (_) {}
-
-      if (geo.hasAttribute('normal')) geo.deleteAttribute('normal');
-      geo.computeVertexNormals();
-
-      geo.computeBoundingBox();
-      geo.computeBoundingSphere();
-
-      child.geometry = geo;
+      if (child.geometry.hasAttribute('normal')) child.geometry.deleteAttribute('normal');
+      child.geometry.computeVertexNormals();
 
       // Generate and apply normal map from the color texture
       if (child.material && child.material.map) {
