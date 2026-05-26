@@ -97,23 +97,23 @@ export default {
         const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'image/png';
         const ext  = mime.split('/')[1] || 'png';
 
+        // Decode base64 → Uint8Array → pipe via a data: Response so the
+        // runtime serialises the binary body without any Content-Length conflict.
         const binary = atob(b64);
         const bytes  = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const bodyStream = new Response(bytes).body;
 
-        // Blob carries Content-Type automatically; do NOT set Content-Type or
-        // Content-Length manually — Cloudflare Workers overrides them from the
-        // body and a manual mismatch is what caused "Missing content" before.
-        const blob = new Blob([bytes], { type: mime });
-        console.log('[worker] upload blob size:', blob.size, 'mime:', mime);
-
+        console.log('[worker] upload bytes:', bytes.byteLength, 'mime:', mime);
         const res = await fetch(`${REPLICATE_BASE}/files`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${REPLICATE_KEY}`,
+            'Content-Type': mime,
             'Content-Disposition': `attachment; filename="upload.${ext}"`,
           },
-          body: blob,
+          body: bodyStream,
+          duplex: 'half',
         });
         const text = await res.text();
         console.log('[worker] upload status:', res.status, text.slice(0, 300));
