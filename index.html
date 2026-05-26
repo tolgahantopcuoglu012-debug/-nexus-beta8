@@ -1060,7 +1060,6 @@ const API = (() => {
 
   // ── TripoSG Image → 3D (Replicate proxy) ──
   const TRIPOSG = (() => {
-    const VERSION = '14bcf0ef5a1d638ef5cd78c30a72efb32344cdd9280efb5819fd15275cec85e3';
     const PROXY   = 'https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev';
     const POLL_MS = 3000;
     const MAX_ATTEMPTS = 80;
@@ -1078,7 +1077,7 @@ const API = (() => {
     async function imageToGLB(imageDataUrl, steps, guidance, onProgress) {
       const pred = await _post({
         action: 'create',
-        version: VERSION,
+        model: 'aaronjmars/triposg',
         input: {
           image: imageDataUrl,
           num_inference_steps: steps || 50,
