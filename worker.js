@@ -88,33 +88,6 @@ export default {
         return json(data, res.status);
       }
 
-      // ── UPLOAD ──
-      if (body.action === 'upload') {
-        if (!body.data) return err('data gerekli');
-        const [header, b64] = body.data.split(',');
-        const mime = (header.match(/data:([^;]+)/) || [])[1] || 'image/png';
-        const ext  = mime.split('/')[1] || 'png';
-        const binary = atob(b64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        console.log('[worker] upload bytes:', bytes.byteLength, 'mime:', mime);
-        const res = await fetch(`${REPLICATE_BASE}/files`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${REPLICATE_KEY}`,
-            'Content-Type': mime,
-            'Content-Length': String(bytes.byteLength),
-            'Content-Disposition': `attachment; filename="upload.${ext}"`,
-          },
-          body: bytes.buffer,
-        });
-        const text = await res.text();
-        console.log('[worker] upload status:', res.status, text.slice(0, 200));
-        let data;
-        try { data = JSON.parse(text); } catch { data = { raw: text }; }
-        return json(data, res.status);
-      }
-
       // ── DOWNLOAD ──
       if (body.action === 'download') {
         if (!body.url) return err('url gerekli');
