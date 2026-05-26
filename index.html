@@ -630,7 +630,7 @@ const Engine = (() => {
           }
         }
 
-        for (let iter = 0; iter < 10; iter++) {
+        for (let iter = 0; iter < 2; iter++) {
           const nx = new Float32Array(n * 3);
           for (let v = 0; v < n; v++) {
             const nb = [...neighbors[v]];
@@ -641,9 +641,9 @@ const Engine = (() => {
             let sx = 0, sy = 0, sz = 0;
             for (const j of nb) { sx += pos.getX(j); sy += pos.getY(j); sz += pos.getZ(j); }
             const inv = 1 / nb.length;
-            nx[v*3]   = pos.getX(v) * 0.5 + sx * inv * 0.5;
-            nx[v*3+1] = pos.getY(v) * 0.5 + sy * inv * 0.5;
-            nx[v*3+2] = pos.getZ(v) * 0.5 + sz * inv * 0.5;
+            nx[v*3]   = pos.getX(v) * 0.7 + sx * inv * 0.3;
+            nx[v*3+1] = pos.getY(v) * 0.7 + sy * inv * 0.3;
+            nx[v*3+2] = pos.getZ(v) * 0.7 + sz * inv * 0.3;
           }
           for (let v = 0; v < n; v++) pos.setXYZ(v, nx[v*3], nx[v*3+1], nx[v*3+2]);
           pos.needsUpdate = true;
