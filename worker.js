@@ -80,6 +80,23 @@ export default {
         return json(data, res.status);
       }
 
+      // ── UPLOAD ──
+      if (body.action === 'upload') {
+        if (!body.data) return err('data gerekli');
+        const [header, b64] = body.data.split(',');
+        const mime = (header.match(/data:([^;]+)/) || [])[1] || 'image/png';
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const res = await fetch(`${REPLICATE_BASE}/files`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${REPLICATE_KEY}`, 'Content-Type': mime },
+          body: bytes,
+        });
+        const data = await res.json();
+        return json(data, res.status);
+      }
+
       // ── DOWNLOAD ──
       if (body.action === 'download') {
         if (!body.url) return err('url gerekli');
