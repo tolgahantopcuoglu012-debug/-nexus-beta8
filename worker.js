@@ -3,7 +3,8 @@ const REPLICATE_BASE = 'https://api.replicate.com/v1';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
 function json(data, status = 200) {
@@ -14,7 +15,10 @@ function json(data, status = 200) {
 }
 
 function err(msg, status = 400) {
-  return new Response(msg, { status, headers: CORS });
+  return new Response(JSON.stringify({ error: msg }), {
+    status,
+    headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
 }
 
 async function fetchWithBackoff(url, options, maxRetries = 4) {
@@ -31,7 +35,10 @@ async function fetchWithBackoff(url, options, maxRetries = 4) {
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
-      return new Response('', { status: 200, headers: CORS });
+      return new Response(null, { status: 204, headers: CORS });
+    }
+    if (request.method === 'GET') {
+      return json({ status: 'ok', service: 'nexus-replicate-proxy' });
     }
     if (request.method !== 'POST') {
       return err('Method Not Allowed', 405);
