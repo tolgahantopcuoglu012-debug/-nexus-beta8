@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap');
@@ -603,6 +604,25 @@ const Engine = (() => {
     scene.add(gnd);
   }
 
+  function _postprocessModel(model) {
+    model.traverse(child => {
+      if (!child.isMesh) return;
+      let geo = child.geometry;
+
+      // Merge duplicate/near-duplicate vertices
+      try { geo = THREE.BufferGeometryUtils.mergeVertices(geo, 1e-4); } catch (_) {}
+
+      // Drop baked normals and recompute smooth ones
+      if (geo.hasAttribute('normal')) geo.deleteAttribute('normal');
+      geo.computeVertexNormals();
+
+      geo.computeBoundingBox();
+      geo.computeBoundingSphere();
+
+      child.geometry = geo;
+    });
+  }
+
   function _loadMatcap() {
     new THREE.TextureLoader().load(
       'https://threejs.org/examples/textures/matcaps/matcap-porcelain-white.jpg',
@@ -656,6 +676,9 @@ const Engine = (() => {
         const center = box1.getCenter(new THREE.Vector3());
         model.position.set(-center.x, -box1.min.y, -center.z);
         model.updateMatrixWorld(true);
+
+        // Geometry post-process: merge verts, smooth normals, fix bounding volumes
+        _postprocessModel(model);
 
         // Materyal — matcap (yalnızca texture yoksa)
         if (!keepMaterials && _matcapTex) {
