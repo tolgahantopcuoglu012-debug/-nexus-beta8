@@ -412,13 +412,19 @@ textarea.prompt-input {
       <input type="file" id="IMG_INPUT" accept="image/*" style="display:none"
         onchange="if(this.files&&this.files.length>0){document.getElementById('BTN_IMG').disabled=false;document.getElementById('IMG_DROP').style.borderColor='var(--accent)';UI.log('📸 Görsel yüklendi: '+this.files[0].name);}">
 
-      <div id="TRELLIS_OPTS" style="display:none;margin-bottom:6px;">
-        <div style="font-size:7px;color:var(--muted);margin-bottom:3px;">Texture Kalitesi</div>
-        <select id="TRELLIS_TEX" style="width:100%;background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.14);border-radius:3px;padding:4px 6px;color:var(--text);font-size:9px;font-family:'JetBrains Mono',monospace;outline:none;">
-          <option value="512">512 — Hızlı</option>
-          <option value="1024" selected>1024 — Orta</option>
-          <option value="2048">2048 — Yüksek</option>
-        </select>
+      <div id="TRIPOSG_OPTS" style="margin-bottom:6px;">
+        <div style="font-size:7px;color:var(--muted);margin-bottom:4px;">Adım Sayısı</div>
+        <div class="slider-row">
+          <input type="range" id="TRIPOSG_STEPS" min="20" max="50" value="50" step="5"
+            oninput="document.getElementById('TRIPOSG_STEPS_VAL').textContent=this.value">
+          <span class="slider-val" id="TRIPOSG_STEPS_VAL">50</span>
+        </div>
+        <div style="font-size:7px;color:var(--muted);margin-top:6px;margin-bottom:4px;">Guidance Scale</div>
+        <div class="slider-row">
+          <input type="range" id="TRIPOSG_GUIDANCE" min="1" max="15" value="7" step="0.5"
+            oninput="document.getElementById('TRIPOSG_GUIDANCE_VAL').textContent=this.value">
+          <span class="slider-val" id="TRIPOSG_GUIDANCE_VAL">7</span>
+        </div>
       </div>
       <button class="gen-btn" id="BTN_IMG" disabled onclick="UI.runImageTo3D()">🖼→📦 3D'YE DÖNÜŞTÜR (-15 💎)</button>
     </div>
@@ -1052,12 +1058,12 @@ const API = (() => {
   }
 
 
-  // ── Trellis Image → 3D (Replicate via Netlify Function) ──
-  const TRELLIS = (() => {
-    const VERSION = 'e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c';
+  // ── TripoSG Image → 3D (Replicate proxy) ──
+  const TRIPOSG = (() => {
+    const VERSION = '14bcf0ef5a1d638ef5cd78c30a72efb32344cdd9280efb5819fd15275cec85e3';
     const PROXY   = 'https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev';
     const POLL_MS = 3000;
-    const MAX_ATTEMPTS = 80; // ~4 dakika
+    const MAX_ATTEMPTS = 80;
 
     async function _post(body) {
       const res = await fetch(PROXY, {
@@ -1069,28 +1075,20 @@ const API = (() => {
       return res.json();
     }
 
-    async function imageToGLB(imageDataUrl, textureSize, onProgress) {
-      // Prediction oluştur
+    async function imageToGLB(imageDataUrl, steps, guidance, onProgress) {
       const pred = await _post({
         action: 'create',
         version: VERSION,
         input: {
-          images: [imageDataUrl],
-          texture_size: textureSize || 2048,
-          mesh_simplify: 0.98,
-          generate_model: true,
-          generate_color: true,
-          randomize_seed: true,
-          ss_sampling_steps: 50,
-          slat_sampling_steps: 50,
-          ss_guidance_strength: 7.5,
-          slat_guidance_strength: 3,
+          image: imageDataUrl,
+          num_inference_steps: steps || 50,
+          guidance_scale: guidance || 7,
+          seed: 42,
         },
       });
 
       if (!pred.id) throw new Error('Prediction ID alınamadı');
 
-      // Poll
       for (let i = 0; i < MAX_ATTEMPTS; i++) {
         await new Promise(r => setTimeout(r, POLL_MS));
         const pd = await _post({ action: 'poll', predictionId: pred.id });
@@ -1099,15 +1097,15 @@ const API = (() => {
         if (onProgress) onProgress(Math.round(pct), pd.status || 'processing');
 
         if (pd.status === 'succeeded') {
-          const glbUrl = pd.output?.model_file;
-          if (!glbUrl) throw new Error('model_file URL yok');
+          const glbUrl = pd.output;
+          if (!glbUrl) throw new Error('GLB URL yok');
           return await _downloadGLB(glbUrl);
         }
         if (pd.status === 'failed') {
-          throw new Error('Trellis başarısız: ' + (pd.error || 'bilinmeyen hata'));
+          throw new Error('TripoSG başarısız: ' + (pd.error || 'bilinmeyen hata'));
         }
       }
-      throw new Error('Trellis zaman aşımı');
+      throw new Error('TripoSG zaman aşımı');
     }
 
     async function _downloadGLB(url) {
@@ -1117,7 +1115,6 @@ const API = (() => {
         body: JSON.stringify({ action: 'download', url }),
       });
       if (!res.ok) throw new Error(`GLB download ${res.status}`);
-      // Netlify Function JSON içinde base64 döner
       const json = await res.json();
       const bin = Uint8Array.from(atob(json.data), ch => ch.charCodeAt(0));
       return bin.buffer;
@@ -1126,7 +1123,7 @@ const API = (() => {
     return { imageToGLB };
   })();
 
-  return { textTo3D, imageTo3D, TRELLIS };
+  return { textTo3D, imageTo3D, TRIPOSG };
 })();
 
 
@@ -1442,53 +1439,12 @@ const UI = (() => {
       }
       if (!imageUrl) throw new Error('Görsel URL alınamadı');
 
-      log('🔷 3D modele dönüştürülüyor...', 'lai');
+      log('🔷 TripoSG ile 3D\'ye dönüştürülüyor... (~1 dk)', 'lai');
 
-      // ADIM 2: Trellis ile 3D'ye çevir
-      const trellisPred = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create',
-          version: 'e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c',
-          input: {
-            images: [imageUrl],
-            texture_size: 2048,
-            mesh_simplify: 0.98,
-            generate_model: true,
-            generate_color: true,
-            randomize_seed: true,
-            ss_sampling_steps: 50,
-            slat_sampling_steps: 50,
-            ss_guidance_strength: 7.5,
-            slat_guidance_strength: 3
-          }
-        })
-      }).then(r => r.json());
-
-      let glbUrl = null;
-      for (let i = 0; i < 80; i++) {
-        await new Promise(r => setTimeout(r, 3000));
-        const pd = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'poll', predictionId: trellisPred.id })
-        }).then(r => r.json());
-        log('⟳ Trellis: ' + pd.status + ' %' + Math.min(10 + i * 2, 90), 'lai');
-        if (pd.status === 'succeeded') { glbUrl = pd.output?.model_file; break; }
-        if (pd.status === 'failed') throw new Error('3D dönüşüm başarısız');
-      }
-      if (!glbUrl) throw new Error('GLB URL alınamadı');
-
-      // GLB indir
-      const dlRes = await fetch('https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'download', url: glbUrl })
+      // ADIM 2: TripoSG ile 3D'ye çevir
+      const buffer = await API.TRIPOSG.imageToGLB(imageUrl, 50, 7, (pct, status) => {
+        log('⟳ TripoSG: ' + status + ' %' + pct, 'lai');
       });
-      const json = await dlRes.json();
-      const bin = Uint8Array.from(atob(json.data), ch => ch.charCodeAt(0));
-      const buffer = bin.buffer;
 
       const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
       Engine.clearModels();
@@ -1505,18 +1461,18 @@ const UI = (() => {
     }
   }
 
-  let _imgApi = 'trellis'; // 'meshy' | 'trellis'
+  let _imgApi = 'triposg'; // 'meshy' | 'triposg'
 
   function setImgApi(api) {
     _imgApi = api;
     const mb = document.getElementById('IMG_API_MESHY');
-    const tb = document.getElementById('IMG_API_TRELLIS');
-    const opts = document.getElementById('TRELLIS_OPTS');
+    const tb = document.getElementById('IMG_API_TRIPOSG');
+    const opts = document.getElementById('TRIPOSG_OPTS');
     const active = 'background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);';
     const inactive = '';
     if (mb) mb.style.cssText = 'flex:1;font-size:7px;padding:4px;' + (api === 'meshy' ? active : inactive);
-    if (tb) tb.style.cssText = 'flex:1;font-size:7px;padding:4px;' + (api === 'trellis' ? active : inactive);
-    if (opts) opts.style.display = api === 'trellis' ? 'block' : 'none';
+    if (tb) tb.style.cssText = 'flex:1;font-size:7px;padding:4px;' + (api === 'triposg' ? active : inactive);
+    if (opts) opts.style.display = api === 'triposg' ? 'block' : 'none';
   }
 
   async function runImageTo3D() {
@@ -1532,13 +1488,14 @@ const UI = (() => {
     reader.onload = async ev => {
       try {
         let buffer;
-        if (_imgApi === 'trellis') {
+        if (_imgApi === 'triposg') {
           log('🔧 Görsel ön işleme...', 'lai');
           const preprocessed = await Preprocess.run(ev.target.result, msg => log('⟳ ' + msg, 'lai'));
-          log('🔷 Trellis Image→3D başlıyor... (~2-3 dk)', 'lai');
-          const texSize = parseInt(document.getElementById('TRELLIS_TEX')?.value || 1024);
-          buffer = await API.TRELLIS.imageToGLB(preprocessed, texSize, (pct, status) => {
-            log('⟳ Trellis: ' + status + ' %' + pct, 'lai');
+          log('🔷 TripoSG Image→3D başlıyor... (~1 dk)', 'lai');
+          const steps    = parseInt(document.getElementById('TRIPOSG_STEPS')?.value    || 50);
+          const guidance = parseFloat(document.getElementById('TRIPOSG_GUIDANCE')?.value || 7);
+          buffer = await API.TRIPOSG.imageToGLB(preprocessed, steps, guidance, (pct, status) => {
+            log('⟳ TripoSG: ' + status + ' %' + pct, 'lai');
           });
         } else {
           log('🖼 Meshy Görsel → 3D dönüştürülüyor...', 'lai');
@@ -1548,9 +1505,9 @@ const UI = (() => {
         }
         const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
         Engine.clearModels();
-        const model = await Engine.loadModel(buffer, 'trellis_model', targetSize, true);
+        const model = await Engine.loadModel(buffer, 'triposg_model', targetSize, true);
         Editor.Selection.select(model);
-        gallery.add('Trellis Model', 'trellis_model', buffer);
+        gallery.add('TripoSG Model', 'triposg_model', buffer);
         credits.deduct(15);
         log('✅ Model hazır!', 'lok');
       } catch(e) {
