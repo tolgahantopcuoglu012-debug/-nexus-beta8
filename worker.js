@@ -88,6 +88,40 @@ export default {
         return json(data, res.status);
       }
 
+      // ── UPLOAD ──
+      if (body.action === 'upload') {
+        if (!body.data) return err('data gerekli');
+        const commaIdx = body.data.indexOf(',');
+        const meta = body.data.slice(0, commaIdx);
+        const b64  = body.data.slice(commaIdx + 1);
+        const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'image/png';
+        const ext  = mime.split('/')[1] || 'png';
+
+        const binary = atob(b64);
+        const bytes  = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+        // Blob carries Content-Type automatically; do NOT set Content-Type or
+        // Content-Length manually — Cloudflare Workers overrides them from the
+        // body and a manual mismatch is what caused "Missing content" before.
+        const blob = new Blob([bytes], { type: mime });
+        console.log('[worker] upload blob size:', blob.size, 'mime:', mime);
+
+        const res = await fetch(`${REPLICATE_BASE}/files`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${REPLICATE_KEY}`,
+            'Content-Disposition': `attachment; filename="upload.${ext}"`,
+          },
+          body: blob,
+        });
+        const text = await res.text();
+        console.log('[worker] upload status:', res.status, text.slice(0, 300));
+        let data;
+        try { data = JSON.parse(text); } catch { data = { raw: text }; }
+        return json(data, res.status);
+      }
+
       // ── DOWNLOAD ──
       if (body.action === 'download') {
         if (!body.url) return err('url gerekli');
