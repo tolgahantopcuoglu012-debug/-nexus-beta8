@@ -88,40 +88,6 @@ export default {
         return json(data, res.status);
       }
 
-      // ── UPLOAD ──
-      if (body.action === 'upload') {
-        if (!body.data) return err('data gerekli');
-        const commaIdx = body.data.indexOf(',');
-        const meta = body.data.slice(0, commaIdx);
-        const b64  = body.data.slice(commaIdx + 1);
-        const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'image/png';
-        const ext  = mime.split('/')[1] || 'png';
-
-        // Decode base64 → Uint8Array → pipe via a data: Response so the
-        // runtime serialises the binary body without any Content-Length conflict.
-        const binary = atob(b64);
-        const bytes  = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const bodyStream = new Response(bytes).body;
-
-        console.log('[worker] upload bytes:', bytes.byteLength, 'mime:', mime);
-        const res = await fetch(`${REPLICATE_BASE}/files`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${REPLICATE_KEY}`,
-            'Content-Type': mime,
-            'Content-Disposition': `attachment; filename="upload.${ext}"`,
-          },
-          body: bodyStream,
-          duplex: 'half',
-        });
-        const text = await res.text();
-        console.log('[worker] upload status:', res.status, text.slice(0, 300));
-        let data;
-        try { data = JSON.parse(text); } catch { data = { raw: text }; }
-        return json(data, res.status);
-      }
-
       // ── DOWNLOAD ──
       if (body.action === 'download') {
         if (!body.url) return err('url gerekli');

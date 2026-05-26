@@ -1076,16 +1076,10 @@ const API = (() => {
     }
 
     async function imageToGLB(imageDataUrl, steps, guidance, onProgress) {
-      if (onProgress) onProgress(0, 'Görsel yükleniyor...');
-      const upload = await _post({ action: 'upload', data: imageDataUrl });
-      if (!upload.urls?.get) throw new Error('Görsel yükleme başarısız: ' + JSON.stringify(upload));
-      const imageUrl = upload.urls.get;
-      console.log('[TripoSG] uploaded image URL:', imageUrl);
-
       const pred = await _post({
         action: 'create',
-        model: 'aaronjmars/triposg',
-        input: { image: imageUrl, num_inference_steps: steps || 50, guidance_scale: guidance || 7, seed: 42 },
+        version: '14bcf0ef5a1d638ef5cd78c30a72efb32344cdd9280efb5819fd15275cec85e3',
+        input: { image: imageDataUrl, num_inference_steps: steps || 50, guidance_scale: guidance || 7, seed: 42 },
       });
 
       if (!pred.id) throw new Error('Prediction ID alınamadı');
