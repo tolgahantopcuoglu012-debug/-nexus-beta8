@@ -76,8 +76,11 @@ export default {
       // ── DOWNLOAD ──
       if (body.action === 'download') {
         if (!body.url) return err('url gerekli');
-        const res = await fetch(body.url);
-        if (!res.ok) throw new Error(`Download upstream ${res.status}`);
+        // TripoSG (and some other models) may wrap the URI in an array
+        const dlUrl = Array.isArray(body.url) ? body.url[0] : String(body.url);
+        if (!dlUrl) return err('url geçersiz');
+        const res = await fetch(dlUrl, { redirect: 'follow' });
+        if (!res.ok) throw new Error(`Download upstream ${res.status}: ${dlUrl}`);
         const buffer = await res.arrayBuffer();
         const uint8 = new Uint8Array(buffer);
         let binary = '';
