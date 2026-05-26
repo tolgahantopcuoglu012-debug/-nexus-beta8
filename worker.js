@@ -70,11 +70,11 @@ export default {
         if (body.version) payload.version = body.version;
 
         console.log('[worker] create url:', url);
-        console.log('[worker] create payload:', JSON.stringify(payload));
+        console.log('[worker] create input keys:', Object.keys(body.input || {}).join(', '));
         const res = await fetchWithBackoff(url, { method: 'POST', headers: AUTH, body: JSON.stringify(payload) });
         const text = await res.text();
         console.log('[worker] create status:', res.status);
-        console.log('[worker] create response:', text);
+        console.log('[worker] create response:', text.slice(0, 500));
         let data;
         try { data = JSON.parse(text); } catch { data = { raw: text }; }
         return json({ ...data, _debug: { status: res.status, url } }, res.status);
