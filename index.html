@@ -657,7 +657,61 @@ const Engine = (() => {
       geo.computeBoundingSphere();
 
       child.geometry = geo;
+
+      // Generate and apply normal map from the color texture
+      if (child.material && child.material.map) {
+        const nm = _generateNormalMap(child.material.map);
+        if (nm) {
+          child.material.normalMap = nm;
+          child.material.normalScale = new THREE.Vector2(1.2, 1.2);
+          child.material.needsUpdate = true;
+        }
+      }
     });
+  }
+
+  function _generateNormalMap(texture, strength = 3.0) {
+    if (!texture || !texture.image) return null;
+    const size = 512;
+    const src_c = document.createElement('canvas');
+    src_c.width = src_c.height = size;
+    const src_ctx = src_c.getContext('2d');
+    try { src_ctx.drawImage(texture.image, 0, 0, size, size); } catch (_) { return null; }
+    const src = src_ctx.getImageData(0, 0, size, size).data;
+
+    const gray = (x, y) => {
+      const cx = Math.max(0, Math.min(size - 1, x));
+      const cy = Math.max(0, Math.min(size - 1, y));
+      const i = (cy * size + cx) * 4;
+      return (src[i] * 0.2989 + src[i+1] * 0.5870 + src[i+2] * 0.1140) / 255;
+    };
+
+    const dst = new Uint8ClampedArray(size * size * 4);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = (
+          -gray(x-1,y-1) - 2*gray(x-1,y) - gray(x-1,y+1) +
+           gray(x+1,y-1) + 2*gray(x+1,y) + gray(x+1,y+1)
+        ) * strength;
+        const dy = (
+          -gray(x-1,y-1) - 2*gray(x,y-1) - gray(x+1,y-1) +
+           gray(x-1,y+1) + 2*gray(x,y+1) + gray(x+1,y+1)
+        ) * strength;
+        const len = Math.sqrt(dx*dx + dy*dy + 1);
+        const i = (y * size + x) * 4;
+        dst[i]   = (-dx / len * 0.5 + 0.5) * 255 | 0;
+        dst[i+1] = (-dy / len * 0.5 + 0.5) * 255 | 0;
+        dst[i+2] = (1   / len * 0.5 + 0.5) * 255 | 0;
+        dst[i+3] = 255;
+      }
+    }
+
+    const out = document.createElement('canvas');
+    out.width = out.height = size;
+    out.getContext('2d').putImageData(new ImageData(dst, size, size), 0, 0);
+    const normalTex = new THREE.CanvasTexture(out);
+    normalTex.wrapS = normalTex.wrapT = THREE.RepeatWrapping;
+    return normalTex;
   }
 
   function _loadMatcap() {
