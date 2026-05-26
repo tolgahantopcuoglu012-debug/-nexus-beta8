@@ -51,6 +51,8 @@ export default {
       return err('Invalid JSON');
     }
 
+    console.log('[worker] action:', body.action, '| keys:', Object.keys(body).join(', '));
+
     const REPLICATE_KEY = env.REPLICATE_API_KEY;
     const AUTH = {
       'Authorization': `Bearer ${REPLICATE_KEY}`,
@@ -67,9 +69,15 @@ export default {
         const payload = { input: body.input };
         if (body.version) payload.version = body.version;
 
+        console.log('[worker] create url:', url);
+        console.log('[worker] create payload:', JSON.stringify(payload));
         const res = await fetchWithBackoff(url, { method: 'POST', headers: AUTH, body: JSON.stringify(payload) });
-        const data = await res.json();
-        return json(data, res.status);
+        const text = await res.text();
+        console.log('[worker] create status:', res.status);
+        console.log('[worker] create response:', text);
+        let data;
+        try { data = JSON.parse(text); } catch { data = { raw: text }; }
+        return json({ ...data, _debug: { status: res.status, url } }, res.status);
       }
 
       // ── POLL ──
@@ -85,15 +93,25 @@ export default {
         if (!body.data) return err('data gerekli');
         const [header, b64] = body.data.split(',');
         const mime = (header.match(/data:([^;]+)/) || [])[1] || 'image/png';
+        const ext  = mime.split('/')[1] || 'png';
         const binary = atob(b64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        console.log('[worker] upload bytes:', bytes.byteLength, 'mime:', mime);
         const res = await fetch(`${REPLICATE_BASE}/files`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${REPLICATE_KEY}`, 'Content-Type': mime },
-          body: bytes,
+          headers: {
+            'Authorization': `Bearer ${REPLICATE_KEY}`,
+            'Content-Type': mime,
+            'Content-Length': String(bytes.byteLength),
+            'Content-Disposition': `attachment; filename="upload.${ext}"`,
+          },
+          body: bytes.buffer,
         });
-        const data = await res.json();
+        const text = await res.text();
+        console.log('[worker] upload status:', res.status, text.slice(0, 200));
+        let data;
+        try { data = JSON.parse(text); } catch { data = { raw: text }; }
         return json(data, res.status);
       }
 
