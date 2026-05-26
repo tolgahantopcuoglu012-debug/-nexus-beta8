@@ -1128,8 +1128,6 @@ const API = (() => {
 
 // ── preprocess.js ──
 const Preprocess = (() => {
-  const PROXY = 'https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev';
-
   function _loadImage(src) {
     return new Promise((res, rej) => {
       const img = new Image();
@@ -1189,44 +1187,6 @@ const Preprocess = (() => {
     ctx.putImageData(dst, 0, 0);
   }
 
-  async function _removeBackground(dataUrl, onProgress) {
-    if (onProgress) onProgress('Arka plan kaldırılıyor...');
-    const pred = await fetch(PROXY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create', model: 'cjwbw/rembg', input: { image: dataUrl } }),
-    }).then(r => r.json());
-
-    if (!pred.id) throw new Error('rembg prediction ID alınamadı');
-
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      const pd = await fetch(PROXY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'poll', predictionId: pred.id }),
-      }).then(r => r.json());
-
-      if (pd.status === 'succeeded') {
-        const dl = await fetch(PROXY, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'download', url: pd.output }),
-        }).then(r => r.json());
-        const bin = Uint8Array.from(atob(dl.data), ch => ch.charCodeAt(0));
-        const blob = new Blob([bin], { type: 'image/png' });
-        return await new Promise((res, rej) => {
-          const fr = new FileReader();
-          fr.onload = () => res(fr.result);
-          fr.onerror = rej;
-          fr.readAsDataURL(blob);
-        });
-      }
-      if (pd.status === 'failed') throw new Error('Arka plan kaldırma başarısız');
-    }
-    throw new Error('Arka plan kaldırma zaman aşımı');
-  }
-
   async function run(dataUrl, onProgress) {
     const img = await _loadImage(dataUrl);
     const canvas = document.createElement('canvas');
@@ -1244,13 +1204,7 @@ const Preprocess = (() => {
     if (onProgress) onProgress('Keskinleştiriliyor...');
     _applySharpen(ctx, canvas.width, canvas.height);
 
-    const processed = canvas.toDataURL('image/png');
-    try {
-      return await _removeBackground(processed, onProgress);
-    } catch (e) {
-      if (onProgress) onProgress('⚠ Arka plan kaldırılamadı, orijinal kullanılıyor: ' + e.message);
-      return processed;
-    }
+    return canvas.toDataURL('image/png');
   }
 
   return { run };
