@@ -44,6 +44,56 @@ export default {
       return err('Method Not Allowed', 405);
     }
 
+    const url = new URL(request.url);
+
+    // ── /generate : RunPod (Trellis 2) proxy ──
+    // Anahtar koda gömülmez; RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID env'den okunur.
+    if (url.pathname === '/generate') {
+      const RUNPOD_KEY = env.RUNPOD_API_KEY;
+      const RUNPOD_ENDPOINT = env.RUNPOD_ENDPOINT_ID;
+      if (!RUNPOD_KEY || !RUNPOD_ENDPOINT) {
+        return err('RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID env tanımlı değil', 500);
+      }
+
+      let genBody;
+      try {
+        genBody = await request.json();
+      } catch {
+        return err('Invalid JSON');
+      }
+
+      const RUNPOD_BASE = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT}`;
+      const RP_AUTH = {
+        'Authorization': `Bearer ${RUNPOD_KEY}`,
+        'Content-Type': 'application/json',
+      };
+
+      // Durum sorgulama: { action: 'poll', jobId }
+      if (genBody.action === 'poll') {
+        if (!genBody.jobId) return err('jobId gerekli');
+        const res = await fetchWithBackoff(`${RUNPOD_BASE}/status/${genBody.jobId}`, { headers: RP_AUTH });
+        const data = await res.json();
+        return json(data, res.status);
+      }
+
+      // İş başlatma: { image, resolution }
+      if (!genBody.image) return err('image gerekli (base64 veya URL)');
+      const resolution = Number(genBody.resolution) === 1536 ? 1536 : 1024;
+
+      // Trellis 2 üretimi uzun sürebildiği için async /run + poll kullanılır.
+      console.log('[worker] generate -> runpod:', RUNPOD_ENDPOINT, '| resolution:', resolution);
+      const res = await fetchWithBackoff(`${RUNPOD_BASE}/run`, {
+        method: 'POST',
+        headers: RP_AUTH,
+        body: JSON.stringify({ input: { image: genBody.image, resolution, seed: genBody.seed } }),
+      });
+      const text = await res.text();
+      console.log('[worker] generate status:', res.status);
+      let data;
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      return json(data, res.status);
+    }
+
     let body;
     try {
       body = await request.json();
