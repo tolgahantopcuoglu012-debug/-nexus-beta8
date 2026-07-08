@@ -4,8 +4,10 @@
 
 | Dosya | Açıklama |
 |-------|----------|
-| `handler.py` | RunPod handler — `runpod-python` SDK. Input: `image` (base64/URL) + `resolution` (1024/1536). Output: base64 GLB. |
-| `Dockerfile` | CUDA 12.1 tabanlı, Trellis 2 bağımlılıklarıyla. |
+| `handler.py` | RunPod handler — `runpod-python` SDK. Input: `image` (base64/URL) + `resolution` (1024/1536). Output: base64 GLB. Resmi `Trellis2ImageTo3DPipeline` + `o_voxel.postprocess.to_glb` API'sini kullanır. |
+| `Dockerfile` | CUDA 12.4 tabanlı; resmi `microsoft/TRELLIS.2` `setup.sh` ile kurulur (conda env `trellis2`, PyTorch 2.6.0). |
+
+> `resolution` değeri, üretimde `run(..., pipeline_type=...)` parametresine eşlenir: `1024 → "1024"`, `1536 → "1536_cascade"` (O-Voxel grid çözünürlüğü). `texture_size` ayrı bir opsiyonel girdidir (varsayılan 2048).
 
 ---
 
@@ -17,7 +19,8 @@
   "input": {
     "image": "data:image/png;base64,iVBOR...",   // base64, data URI veya http(s) URL
     "resolution": 1024,                            // 1024 | 1536 (varsayılan 1024)
-    "seed": 42                                     // opsiyonel
+    "seed": 42,                                    // opsiyonel
+    "texture_size": 2048                           // opsiyonel, GLB doku çözünürlüğü
   }
 }
 ```
@@ -39,7 +42,7 @@ Hata durumunda: `{ "error": "..." }`.
 ## Adım adım: RunPod'da endpoint kurulumu
 
 ### 1. Docker imajını derle ve push et
-GPU derlemesi (flash-attn, nvdiffrast, kaolin) uzun sürer; iyi bir makinede yapın.
+Derleme, resmi `setup.sh` üzerinden flash-attn / nvdiffrast / nvdiffrec / cumesh / o-voxel / flexgemm eklentilerini derler — **uzun sürer** (CUDA toolkit'li bir makinede yapın).
 ```bash
 cd runpod
 docker build -t <docker-kullanıcı>/nexus-trellis2:latest .
@@ -50,7 +53,7 @@ docker push <docker-kullanıcı>/nexus-trellis2:latest
 ### 2. Serverless Endpoint oluştur
 1. [RunPod Console](https://www.runpod.io/console/serverless) → **Serverless** → **New Endpoint**.
 2. **Container Image**: `<docker-kullanıcı>/nexus-trellis2:latest`.
-3. **GPU**: Trellis 2 4B için ≥ 24 GB VRAM önerilir (A5000 / L4 / A100). 1536 çözünürlük için daha çok belleğe ihtiyaç olabilir.
+3. **GPU**: Resmi olarak ≥ 24 GB VRAM gerekir (A100 / H100 doğrulanmış). 1536_cascade için daha çok belleğe ihtiyaç olabilir.
 4. **Container Disk**: ≥ 30 GB (model ağırlıkları + bağımlılıklar).
 5. **Workers**: Min 0 (soğuk başlatma kabul edilebilirse), Max isteğe göre.
 6. **Environment Variables** (opsiyonel):
@@ -103,4 +106,5 @@ curl -X POST https://nexus-replicate-proxy.<subdomain>.workers.dev/generate \
 - **Soğuk başlatma:** İlk istekte model GPU'ya yüklenir (dakikalar sürebilir). Sonraki isteklerde sıcak worker yeniden kullanılır.
 - **Zaman aşımı:** Trellis 2 üretimi uzun sürebildiği için Worker `runsync` yerine `run` + `status` (async poll) kullanır.
 - **Model erişimi:** `microsoft/TRELLIS.2-4B` gated ise endpoint'e `HF_TOKEN` ekleyin.
-- **Bağımlılık sürümleri:** `Dockerfile`'daki paket/derleme adımları TRELLIS'in resmi kurulumunu izler; TRELLIS 2 resmi talimatları güncellenirse buna göre uyarlayın.
+- **Bağımlılıklar:** `Dockerfile`, resmi `microsoft/TRELLIS.2` `setup.sh`'ini (conda env `trellis2`, PyTorch 2.6.0 / CUDA 12.4) çalıştırır; upstream setup güncellenirse imaj yeniden derlenerek uyum korunur.
+- **GLB dokusu:** Export `extension_webp=True` ile yapılır (WebP sıkıştırmalı doku). Bazı görüntüleyicilerde saydamlığın elle bağlanması gerekebilir (upstream notu).
