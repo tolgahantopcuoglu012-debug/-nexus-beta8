@@ -2,7 +2,7 @@
 // Trellis (firtoz/trellis) için Replicate API proxy
 // CORS sorununu çözer, API key'i gizler
 
-const REPLICATE_KEY = process.env.REPLICATE_API_KEY || 'r8_HBUaxBMLz2JDs4T6yEsmCvYgrFcNjQ021WFFU';
+const REPLICATE_KEY = process.env.REPLICATE_API_KEY;
 const REPLICATE_BASE = 'https://api.replicate.com/v1';
 
 const CORS = {
@@ -24,6 +24,10 @@ exports.handler = async (event) => {
     body = JSON.parse(event.body);
   } catch {
     return { statusCode: 400, headers: CORS, body: 'Invalid JSON' };
+  }
+
+  if (!REPLICATE_KEY) {
+    return { statusCode: 500, headers: CORS, body: 'REPLICATE_API_KEY env değişkeni tanımlı değil' };
   }
 
   const AUTH = { 'Authorization': `Bearer ${REPLICATE_KEY}`, 'Content-Type': 'application/json' };

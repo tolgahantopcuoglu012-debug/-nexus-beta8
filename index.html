@@ -973,7 +973,11 @@ const Editor = (() => {
 ═══════════════════════════════════════════ */
 
 const API = (() => {
-  const KEY = 'msy_z0xbANon3MQeSUqywQTNgljSTPZT2KgRqaZ9';
+  // API anahtarı repoya GÖMÜLMEZ. Çalışma zamanında enjekte edilen bir
+  // config'ten okunur: gitignore'lu bir config.js içinde
+  //   window.NEXUS_CONFIG = { MESHY_KEY: 'msy_...' }
+  // (Kalıcı çözüm: TripoSG gibi bu çağrıları da worker proxy arkasına almak.)
+  const KEY = (typeof window !== 'undefined' && window.NEXUS_CONFIG && window.NEXUS_CONFIG.MESHY_KEY) || '';
   const BASE = 'https://api.meshy.ai';
   const POLL_INTERVAL = 5000;
   const MAX_WAIT = 600000;
