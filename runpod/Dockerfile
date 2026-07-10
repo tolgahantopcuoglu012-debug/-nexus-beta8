@@ -1,8 +1,11 @@
 # Trellis 2 (microsoft/TRELLIS.2-4B) — RunPod Serverless worker
 #
-# Bağımlılıklar, resmi microsoft/TRELLIS.2 kurulumunu (setup.sh) izler:
-#   conda env "trellis2" (Python 3.10) + PyTorch 2.6.0 / CUDA 12.4
-#   flash-attn, nvdiffrast, nvdiffrec, cumesh, o-voxel, flexgemm derlenir.
+# Bağımlılıklar resmi microsoft/TRELLIS.2 kurulumunu izler; ancak conda env "trellis2"
+# ve PyTorch, setup.sh'ın --new-env yoluna bırakılmaz (o yol RunPod non-interactive
+# build'inde defaults-kanalı ToS hatasıyla env'i oluşturamıyor ve paketleri base'e
+# kuruyordu). Env + torch burada elle, sabit sürümlerle kurulur; setup.sh yalnızca
+# derlenen eklentileri (flash-attn, nvdiffrast, nvdiffrec, cumesh, o-voxel, flexgemm)
+# ekler.
 #
 # Build:  docker build -f runpod/Dockerfile -t <registry>/nexus-trellis2:latest .
 # Push:   docker push <registry>/nexus-trellis2:latest
@@ -30,38 +33,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && bash /tmp/miniconda.sh -b -p $CONDA_DIR \
     && rm /tmp/miniconda.sh
 
-# conda create/install adımlarını non-interactive build içinde otomatik onayla.
-# setup.sh içindeki `conda create -n trellis2 ...` -y bayrağı taşımaz; bu olmadan
-# env hiç oluşmaz ve sonraki `conda run -n trellis2` exit 1 verir.
-RUN conda config --set always_yes true --set changeps1 false
-
 # ── TRELLIS.2 kaynağı (submodule'lar dahil) ──
 RUN git clone -b main --recursive https://github.com/microsoft/TRELLIS.2.git /opt/TRELLIS.2
 
 WORKDIR /opt/TRELLIS.2
 
-# ── Resmi setup.sh: env "trellis2" + tüm derlenen eklentiler ──
-# conda.sh'ı source etmek `conda activate trellis2`'i kullanılabilir kılar; aksi halde
-# setup.sh içindeki activate sessizce başarısız olur ve paketler base env'e kurulurdu.
-#
-# setup.sh, platformu `command -v nvidia-smi` ile belirler; CPU-only build makinesinde
-# nvidia-smi yoktur → script "Error: No supported GPU found" ile exit 1 verir. PLATFORM=cuda
-# seçilsin diye build süresince sahte bir nvidia-smi shim'i eklenir, kurulum bitince kaldırılır
-# (runtime'da RunPod'un gerçek nvidia-smi'ı gölgelenmesin). Derleme GPU gerektirmez; eklentiler
-# TORCH_CUDA_ARCH_LIST üzerinden CUDA toolkit ile derlenir.
-#
-# Son satır: trellis2 içine torch'un gerçekten kurulduğunu doğrular (kurulumun başarısını
-# build sırasında görünür kılan sağlama).
+# ── conda env "trellis2" (Python 3.10) ──
+# conda-forge + --override-channels: defaults kanalının ToS onay kapısına hiç girmeyiz
+# (setup.sh --new-env'in başarısız olduğu asıl neden buydu).
+RUN conda create -y -n trellis2 -c conda-forge --override-channels python=3.10
+
+# ── PyTorch 2.6.0 / CUDA 12.4 (elle) ──
+# torch.version.cuda == 12.4, CUDA_HOME toolkit'i (12.4) ile eşleşir; eklenti
+# derlemeleri (o_voxel/cumesh/flex_gemm) torch cpp_extension CUDA sürüm kontrolünü
+# ancak böyle geçer. (Önceki hata: base'e kurulan torch cu13.0 vs toolkit 12.4.)
+RUN conda run -n trellis2 pip install --no-cache-dir \
+        torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+
+# ── Resmi setup.sh: --new-env YOK; yalnızca derlenen eklentiler ──
+# - conda.sh source + `conda activate trellis2`: pip/python trellis2'ye işaret etsin
+#   (setup.sh çıplak `pip install` kullanır).
+# - nvidia-smi shim: setup.sh'ın "Get system information" bloğu her çağrıda çalışır ve
+#   `command -v nvidia-smi` yoksa "No supported GPU found" ile exit 1 verir; CPU-only
+#   build makinesinde geçici shim ile PLATFORM=cuda seçilir, kurulum bitince kaldırılır.
+# - Son satır: torch'un doğru env'de ve cuda 12.4 ile olduğunu doğrular.
 RUN source "$CONDA_DIR/etc/profile.d/conda.sh" \
+    && conda activate trellis2 \
     && printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/nvidia-smi && chmod +x /usr/local/bin/nvidia-smi \
-    && . ./setup.sh --new-env --basic --flash-attn --nvdiffrast --nvdiffrec --cumesh --o-voxel --flexgemm \
+    && . ./setup.sh --basic --flash-attn --nvdiffrast --nvdiffrec --cumesh --o-voxel --flexgemm \
     && rm -f /usr/local/bin/nvidia-smi \
-    && conda run -n trellis2 python -c "import torch; print('torch', torch.__version__)"
+    && python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
 
 # ── RunPod SDK + handler bağımlılıkları (trellis2 env'ine) ──
 RUN conda run -n trellis2 pip install --no-cache-dir runpod requests
 
-ENV PYTHONPATH=/opt/TRELLIS.2:$PYTHONPATH
+ENV PYTHONPATH=/opt/TRELLIS.2
 COPY runpod/handler.py /opt/TRELLIS.2/handler.py
 
 # trellis2 conda env'i içinde handler'ı başlat
