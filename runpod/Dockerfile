@@ -43,10 +43,19 @@ WORKDIR /opt/TRELLIS.2
 # ── Resmi setup.sh: env "trellis2" + tüm derlenen eklentiler ──
 # conda.sh'ı source etmek `conda activate trellis2`'i kullanılabilir kılar; aksi halde
 # setup.sh içindeki activate sessizce başarısız olur ve paketler base env'e kurulurdu.
-# Son satır: trellis2 içine torch'un gerçekten kurulduğunu doğrular (kurulum akışının
-# başarısını build sırasında görünür kılan sağlama).
+#
+# setup.sh, platformu `command -v nvidia-smi` ile belirler; CPU-only build makinesinde
+# nvidia-smi yoktur → script "Error: No supported GPU found" ile exit 1 verir. PLATFORM=cuda
+# seçilsin diye build süresince sahte bir nvidia-smi shim'i eklenir, kurulum bitince kaldırılır
+# (runtime'da RunPod'un gerçek nvidia-smi'ı gölgelenmesin). Derleme GPU gerektirmez; eklentiler
+# TORCH_CUDA_ARCH_LIST üzerinden CUDA toolkit ile derlenir.
+#
+# Son satır: trellis2 içine torch'un gerçekten kurulduğunu doğrular (kurulumun başarısını
+# build sırasında görünür kılan sağlama).
 RUN source "$CONDA_DIR/etc/profile.d/conda.sh" \
+    && printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/nvidia-smi && chmod +x /usr/local/bin/nvidia-smi \
     && . ./setup.sh --new-env --basic --flash-attn --nvdiffrast --nvdiffrec --cumesh --o-voxel --flexgemm \
+    && rm -f /usr/local/bin/nvidia-smi \
     && conda run -n trellis2 python -c "import torch; print('torch', torch.__version__)"
 
 # ── RunPod SDK + handler bağımlılıkları (trellis2 env'ine) ──
