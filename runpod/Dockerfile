@@ -39,7 +39,7 @@ RUN . ./setup.sh --new-env --basic --flash-attn --nvdiffrast --nvdiffrec --cumes
 RUN conda run -n trellis2 pip install --no-cache-dir runpod requests
 
 ENV PYTHONPATH=/opt/TRELLIS.2:$PYTHONPATH
-COPY handler.py /opt/TRELLIS.2/handler.py
+COPY runpod/handler.py /opt/TRELLIS.2/handler.py
 
 # trellis2 conda env'i içinde handler'ı başlat
 CMD ["conda", "run", "--no-capture-output", "-n", "trellis2", "python", "-u", "handler.py"]
