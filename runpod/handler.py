@@ -28,6 +28,14 @@ from PIL import Image
 
 import runpod
 
+# TRELLIS.2 pipeline, backbone olarak gated facebook/dinov3-... modelini indiriyor.
+# Bu repoya erişim için HF_TOKEN gerekli; endpoint'te tanımlıysa global olarak login ol.
+HF_TOKEN = os.environ.get("HF_TOKEN")
+if HF_TOKEN:
+    from huggingface_hub import login as _hf_login
+
+    _hf_login(token=HF_TOKEN)
+
 MODEL_ID = os.environ.get("TRELLIS_MODEL_ID", "microsoft/TRELLIS.2-4B")
 
 # resolution → run() pipeline_type. TRELLIS.2 grid çözünürlüğünü bu string belirler.
@@ -56,7 +64,7 @@ def _load_pipeline():
     # id geçersiz olur ve fallback "ckpts/..."yi AYRI bir repo sanıp indirmeye çalışır
     # → 401 Repository Not Found. Bu yüzden önce reponun TAMAMINI yerel bir klasöre indirip
     # from_pretrained'e o yerel yolu veriyoruz; ckpts/... artık yerel dosya olarak çözülür.
-    local_dir = snapshot_download(MODEL_ID)
+    local_dir = snapshot_download(MODEL_ID, token=HF_TOKEN)
 
     pipe = Trellis2ImageTo3DPipeline.from_pretrained(local_dir)
     pipe.cuda()
