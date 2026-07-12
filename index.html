@@ -413,7 +413,28 @@ textarea.prompt-input {
       <input type="file" id="IMG_INPUT" accept="image/*" style="display:none"
         onchange="if(this.files&&this.files.length>0){document.getElementById('BTN_IMG').disabled=false;document.getElementById('IMG_DROP').style.borderColor='var(--accent)';UI.log('📸 Görsel yüklendi: '+this.files[0].name);}">
 
-      <div id="TRIPOSG_OPTS" style="margin-bottom:6px;">
+      <div style="display:flex;gap:4px;margin-bottom:6px;">
+        <button id="IMG_API_NEXUS" onclick="UI.setImgApi('nexus')"
+          style="flex:1;font-size:7px;padding:4px;background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);">NEXUS (Trellis 2)</button>
+        <button id="IMG_API_TRIPOSG" onclick="UI.setImgApi('triposg')"
+          style="flex:1;font-size:7px;padding:4px;">TripoSG</button>
+      </div>
+
+      <div id="NEXUS_OPTS" style="margin-bottom:6px;">
+        <div style="font-size:7px;color:var(--muted);margin-bottom:4px;">Çözünürlük</div>
+        <select class="print-select" id="NEXUS_RES">
+          <option value="1024">1024 (hızlı, önerilen)</option>
+          <option value="1536">1536 (yüksek kalite, yavaş)</option>
+        </select>
+        <div style="font-size:7px;color:var(--muted);margin-top:6px;margin-bottom:4px;">Adım Sayısı (hız ↔ kalite)</div>
+        <div class="slider-row">
+          <input type="range" id="NEXUS_STEPS" min="4" max="16" value="8" step="1"
+            oninput="document.getElementById('NEXUS_STEPS_VAL').textContent=this.value">
+          <span class="slider-val" id="NEXUS_STEPS_VAL">8</span>
+        </div>
+      </div>
+
+      <div id="TRIPOSG_OPTS" style="margin-bottom:6px;display:none;">
         <div style="font-size:7px;color:var(--muted);margin-bottom:4px;">Adım Sayısı</div>
         <div class="slider-row">
           <input type="range" id="TRIPOSG_STEPS" min="20" max="50" value="50" step="5"
@@ -1122,7 +1143,79 @@ const API = (() => {
     return { imageToGLB };
   })();
 
-  return { textTo3D, imageTo3D, TRIPOSG };
+
+  // ── NEXUS: Trellis 2 Image → 3D (RunPod, worker /generate proxy'si) ──
+  const NEXUS = (() => {
+    const PROXY   = 'https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev';
+    const POLL_MS = 5000;
+    // Soğuk başlangıçta worker imajı yüklenirken üretim 4-5 dk sürebilir.
+    const MAX_ATTEMPTS = 120;
+
+    async function _post(path, body) {
+      const res = await fetch(PROXY + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`Proxy ${res.status}: ${await res.text()}`);
+      return res.json();
+    }
+
+    function _b64ToBuffer(b64) {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out.buffer;
+    }
+
+    // Barındırıcı linki tarayıcıdan doğrudan çekilemez (ara sayfa + CORS başlığı yok),
+    // bu yüzden worker'ın /download proxy'si üzerinden akıtılır.
+    async function _downloadGLB(url) {
+      const res = await fetch(PROXY + '/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) throw new Error(`GLB indirme ${res.status}: ${await res.text()}`);
+      return await res.arrayBuffer();
+    }
+
+    async function imageToGLB(imageDataUrl, opts, onProgress) {
+      opts = opts || {};
+      const job = await _post('/generate', {
+        image: imageDataUrl,
+        resolution: opts.resolution || 1024,
+        steps: opts.steps || 8,
+      });
+      if (job.error) throw new Error(job.error);
+      if (!job.id) throw new Error('Job ID alınamadı');
+
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        const st = await _post('/generate', { action: 'poll', jobId: job.id });
+
+        if (onProgress) onProgress(Math.min(5 + i * 1.5, 92), st.status || 'IN_QUEUE');
+
+        if (st.status === 'COMPLETED') {
+          const out = st.output || {};
+          if (out.error) throw new Error(out.error);
+          // Handler büyük GLB'yi URL ile, ≤4MB olanı inline base64 ile döndürür.
+          if (out.glb_url) return await _downloadGLB(out.glb_url);
+          if (out.glb)     return _b64ToBuffer(out.glb);
+          throw new Error('Çıktıda glb_url/glb yok');
+        }
+        if (st.status === 'FAILED' || st.status === 'CANCELLED' || st.status === 'TIMED_OUT') {
+          const detail = (st.output && st.output.error) || st.error || st.status;
+          throw new Error('RunPod: ' + detail);
+        }
+      }
+      throw new Error('Zaman aşımı');
+    }
+
+    return { imageToGLB };
+  })();
+
+  return { textTo3D, imageTo3D, TRIPOSG, NEXUS };
 })();
 
 
@@ -1414,18 +1507,21 @@ const UI = (() => {
     }
   }
 
-  let _imgApi = 'triposg'; // 'meshy' | 'triposg'
+  let _imgApi = 'nexus'; // 'nexus' | 'triposg' | 'meshy'
 
   function setImgApi(api) {
     _imgApi = api;
-    const mb = document.getElementById('IMG_API_MESHY');
-    const tb = document.getElementById('IMG_API_TRIPOSG');
-    const opts = document.getElementById('TRIPOSG_OPTS');
     const active = 'background:rgba(0,200,255,.18);border-color:var(--accent);color:var(--accent);';
-    const inactive = '';
-    if (mb) mb.style.cssText = 'flex:1;font-size:7px;padding:4px;' + (api === 'meshy' ? active : inactive);
-    if (tb) tb.style.cssText = 'flex:1;font-size:7px;padding:4px;' + (api === 'triposg' ? active : inactive);
-    if (opts) opts.style.display = api === 'triposg' ? 'block' : 'none';
+    const btnCss = 'flex:1;font-size:7px;padding:4px;';
+    const btns = { nexus: 'IMG_API_NEXUS', triposg: 'IMG_API_TRIPOSG', meshy: 'IMG_API_MESHY' };
+    for (const [key, id] of Object.entries(btns)) {
+      const b = document.getElementById(id);
+      if (b) b.style.cssText = btnCss + (api === key ? active : '');
+    }
+    const nOpts = document.getElementById('NEXUS_OPTS');
+    const tOpts = document.getElementById('TRIPOSG_OPTS');
+    if (nOpts) nOpts.style.display = api === 'nexus'   ? 'block' : 'none';
+    if (tOpts) tOpts.style.display = api === 'triposg' ? 'block' : 'none';
   }
 
   async function runImageTo3D() {
@@ -1441,7 +1537,15 @@ const UI = (() => {
     reader.onload = async ev => {
       try {
         let buffer;
-        if (_imgApi === 'triposg') {
+        if (_imgApi === 'nexus') {
+          log('🔷 NEXUS (Trellis 2) Görsel→3D başlıyor...', 'lai');
+          log('ℹ Soğuk başlangıçta ilk üretim 4-5 dk sürebilir.', 'lai');
+          const resolution = parseInt(document.getElementById('NEXUS_RES')?.value   || 1024);
+          const steps      = parseInt(document.getElementById('NEXUS_STEPS')?.value || 8);
+          buffer = await API.NEXUS.imageToGLB(ev.target.result, { resolution, steps }, (pct, status) => {
+            log('⟳ NEXUS: ' + status + ' %' + pct, 'lai');
+          });
+        } else if (_imgApi === 'triposg') {
           log('🔧 Görsel ön işleme...', 'lai');
           const preprocessed = await Preprocess.run(ev.target.result, msg => log('⟳ ' + msg, 'lai'));
           log('🔷 TripoSG Image→3D başlıyor... (~1 dk)', 'lai');
@@ -1458,9 +1562,10 @@ const UI = (() => {
         }
         const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
         Engine.clearModels();
-        const model = await Engine.loadModel(buffer, 'triposg_model', targetSize, true);
+        const name = _imgApi + '_model';
+        const model = await Engine.loadModel(buffer, name, targetSize, true);
         Editor.Selection.select(model);
-        gallery.add('TripoSG Model', 'triposg_model', buffer);
+        gallery.add(_imgApi.toUpperCase() + ' Model', name, buffer);
         credits.deduct(15);
         log('✅ Model hazır!', 'lok');
       } catch(e) {
@@ -1535,7 +1640,7 @@ const UI = (() => {
 
   return {
     log, inspector, gallery, switchTab, credits,
-    runGenerate, runImageTo3D, exportSTL
+    runGenerate, runImageTo3D, exportSTL, setImgApi
   };
 })();
 
