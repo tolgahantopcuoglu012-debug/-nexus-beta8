@@ -18,6 +18,8 @@ Output:
     veya hata: { "error": "..." }
 """
 
+print("handler starting", flush=True)
+
 import base64
 import io
 import os
@@ -30,11 +32,20 @@ import runpod
 
 # TRELLIS.2 pipeline, backbone olarak gated facebook/dinov3-... modelini indiriyor.
 # Bu repoya erişim için HF_TOKEN gerekli; endpoint'te tanımlıysa global olarak login ol.
+# NOT: login BAŞARISIZ olursa (geçersiz token / ağ hatası) worker'ı KİLİTLEMEMELİ —
+# aksi halde modül import anında ölür ve "unhealthy, exiting before processing jobs"
+# olur. Bu yüzden try/except; token yine snapshot_download'a ayrıca geçiliyor.
 HF_TOKEN = os.environ.get("HF_TOKEN")
 if HF_TOKEN:
-    from huggingface_hub import login as _hf_login
+    try:
+        from huggingface_hub import login as _hf_login
 
-    _hf_login(token=HF_TOKEN)
+        _hf_login(token=HF_TOKEN, add_to_git_credential=False)
+        print("hf login ok", flush=True)
+    except Exception as _exc:  # noqa: BLE001
+        print(f"hf login failed (non-fatal): {_exc}", flush=True)
+
+print("handler module loaded", flush=True)
 
 MODEL_ID = os.environ.get("TRELLIS_MODEL_ID", "microsoft/TRELLIS.2-4B")
 
