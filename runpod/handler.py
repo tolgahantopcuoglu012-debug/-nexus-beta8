@@ -77,6 +77,27 @@ def _load_pipeline():
     # from_pretrained'e o yerel yolu veriyoruz; ckpts/... artık yerel dosya olarak çözülür.
     local_dir = snapshot_download(MODEL_ID, token=HF_TOKEN)
 
+    # image_cond_model (DinoV3FeatureExtractor) config'te "facebook/dinov3-vitl16-
+    # pretrain-lvd1689m"e işaret ediyor — bu GATED bir Meta reposu ve endpoint'teki
+    # HF_TOKEN geçersiz olduğundan runtime'da 401 veriyordu. Config'i indirilen
+    # snapshot içinde UNGATED bir ayna ile değiştiriyoruz (public, token gerektirmez).
+    # (Sembolik linkleri gerçek dosyayla değiştirerek paylaşılan blob'u bozmayız.)
+    dinov3_gated = "facebook/dinov3-vitl16-pretrain-lvd1689m"
+    dinov3_mirror = os.environ.get(
+        "DINOV3_REPO", "camenduru/dinov3-vitl16-pretrain-lvd1689m"
+    )
+    for cfg_name in ("pipeline.json", "texturing_pipeline.json"):
+        cfg_path = os.path.join(local_dir, cfg_name)
+        if not os.path.exists(cfg_path):
+            continue
+        with open(cfg_path, "r", encoding="utf-8") as fh:
+            content = fh.read()
+        if dinov3_gated in content:
+            os.remove(cfg_path)  # snapshot symlink'ini kaldır, gerçek dosya yaz
+            with open(cfg_path, "w", encoding="utf-8") as fh:
+                fh.write(content.replace(dinov3_gated, dinov3_mirror))
+            print(f"patched {cfg_name}: dinov3 -> {dinov3_mirror}", flush=True)
+
     pipe = Trellis2ImageTo3DPipeline.from_pretrained(local_dir)
     pipe.cuda()
     _pipeline = pipe
