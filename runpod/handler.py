@@ -127,8 +127,12 @@ def _load_image(image_ref: str) -> Image.Image:
     return Image.open(io.BytesIO(raw)).convert("RGB")
 
 
-def _to_glb_bytes(mesh, texture_size: int) -> bytes:
-    """MeshWithVoxel çıktısından GLB üretir (resmi o_voxel.postprocess.to_glb yolu)."""
+def _to_glb_bytes(mesh, texture_size: int, max_faces: int = 1000000) -> bytes:
+    """MeshWithVoxel çıktısından GLB üretir (resmi o_voxel.postprocess.to_glb yolu).
+
+    max_faces: decimation hedefi (üçgen sayısı). GLB boyutunu ve export/upload süresini
+    doğrudan belirler. Varsayılan 1.000.000 = eski davranış (geriye uyumlu).
+    """
     import o_voxel
 
     glb = o_voxel.postprocess.to_glb(
@@ -139,7 +143,7 @@ def _to_glb_bytes(mesh, texture_size: int) -> bytes:
         attr_layout=mesh.layout,
         voxel_size=mesh.voxel_size,
         aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
-        decimation_target=1000000,
+        decimation_target=max_faces,
         texture_size=texture_size,
         remesh=True,
         remesh_band=1,
@@ -205,6 +209,10 @@ def handler(event):
         steps_raw = job_input.get("steps")
         steps = int(steps_raw) if steps_raw is not None else None
 
+        # max_faces: decimation hedefi (üçgen). Verilmezse 1.000.000 = eski davranış.
+        max_faces_raw = job_input.get("max_faces")
+        max_faces = int(max_faces_raw) if max_faces_raw is not None else 1000000
+
         if resolution not in ALLOWED_RESOLUTIONS:
             return {"error": f"resolution 1024 veya 1536 olmalı (gelen: {resolution})"}
 
@@ -228,7 +236,9 @@ def handler(event):
         )[0]
         mesh.simplify(16777216)  # nvdiffrast limiti (resmi örnek)
 
-        glb_bytes = _to_glb_bytes(mesh, texture_size=texture_size)
+        glb_bytes = _to_glb_bytes(
+            mesh, texture_size=texture_size, max_faces=max_faces
+        )
 
         result = {
             "resolution": resolution,
@@ -236,6 +246,7 @@ def handler(event):
             "seed": seed,
             "texture_size": texture_size,
             "steps": steps if steps is not None else "default(12)",
+            "max_faces": max_faces,
             "glb_size": len(glb_bytes),
         }
         # Küçükse inline base64; büyükse (RunPod output limiti) URL ile döndür.
