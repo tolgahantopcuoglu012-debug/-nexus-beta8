@@ -77,26 +77,32 @@ def _load_pipeline():
     # from_pretrained'e o yerel yolu veriyoruz; ckpts/... artık yerel dosya olarak çözülür.
     local_dir = snapshot_download(MODEL_ID, token=HF_TOKEN)
 
-    # image_cond_model (DinoV3FeatureExtractor) config'te "facebook/dinov3-vitl16-
-    # pretrain-lvd1689m"e işaret ediyor — bu GATED bir Meta reposu ve endpoint'teki
-    # HF_TOKEN geçersiz olduğundan runtime'da 401 veriyordu. Config'i indirilen
-    # snapshot içinde UNGATED bir ayna ile değiştiriyoruz (public, token gerektirmez).
-    # (Sembolik linkleri gerçek dosyayla değiştirerek paylaşılan blob'u bozmayız.)
-    dinov3_gated = "facebook/dinov3-vitl16-pretrain-lvd1689m"
-    dinov3_mirror = os.environ.get(
-        "DINOV3_REPO", "camenduru/dinov3-vitl16-pretrain-lvd1689m"
-    )
+    # pipeline config'leri GATED HF repolarına işaret ediyor (image_cond_model →
+    # facebook/dinov3-..., rembg_model → briaai/RMBG-2.0). Endpoint'teki HF_TOKEN
+    # geçersiz olduğundan bunlar runtime'da 401 veriyordu. Config'i indirilen snapshot
+    # içinde UNGATED aynalarla değiştiriyoruz (public, token gerektirmez; RMBG aynası
+    # trust_remote_code için birefnet.py/BiRefNet_config.py'yi de içeriyor).
+    # (Sembolik linkleri gerçek dosyayla değiştirerek paylaşılan cache blob'u bozmayız.)
+    gated_to_mirror = {
+        "facebook/dinov3-vitl16-pretrain-lvd1689m": os.environ.get(
+            "DINOV3_REPO", "camenduru/dinov3-vitl16-pretrain-lvd1689m"
+        ),
+        "briaai/RMBG-2.0": os.environ.get("RMBG_REPO", "camenduru/RMBG-2.0"),
+    }
     for cfg_name in ("pipeline.json", "texturing_pipeline.json"):
         cfg_path = os.path.join(local_dir, cfg_name)
         if not os.path.exists(cfg_path):
             continue
         with open(cfg_path, "r", encoding="utf-8") as fh:
             content = fh.read()
-        if dinov3_gated in content:
+        patched = content
+        for gated, mirror in gated_to_mirror.items():
+            patched = patched.replace(gated, mirror)
+        if patched != content:
             os.remove(cfg_path)  # snapshot symlink'ini kaldır, gerçek dosya yaz
             with open(cfg_path, "w", encoding="utf-8") as fh:
-                fh.write(content.replace(dinov3_gated, dinov3_mirror))
-            print(f"patched {cfg_name}: dinov3 -> {dinov3_mirror}", flush=True)
+                fh.write(patched)
+            print(f"patched {cfg_name}: gated repos -> ungated mirrors", flush=True)
 
     pipe = Trellis2ImageTo3DPipeline.from_pretrained(local_dir)
     pipe.cuda()
