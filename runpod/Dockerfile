@@ -64,6 +64,13 @@ RUN source "$CONDA_DIR/etc/profile.d/conda.sh" \
     && rm -f /usr/local/bin/nvidia-smi \
     && python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
 
+# ── transformers'ı 4.57.x'e sabitle ──
+# setup.sh `transformers`ı sürümsüz kurar; bu makinede en güncel sürüm 5.x geliyor.
+# transformers 5.x'in tied-weights refaktörü, RMBG-2.0'ın (BiRefNet) remote-code
+# modelini bozuyor: "'BiRefNet' object has no attribute 'all_tied_weights_keys'".
+# 4.57.6 hem DinoV3'ü destekler (>=4.56.0) hem de bu kırılmayı içermez.
+RUN conda run -n trellis2 pip install --no-cache-dir "transformers==4.57.6"
+
 # ── RunPod SDK + handler bağımlılıkları (trellis2 env'ine) ──
 RUN conda run -n trellis2 pip install --no-cache-dir runpod requests
 
