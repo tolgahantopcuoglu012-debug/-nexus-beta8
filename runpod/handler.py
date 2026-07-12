@@ -199,16 +199,32 @@ def handler(event):
         seed = int(job_input.get("seed", 42))
         texture_size = int(job_input.get("texture_size", 2048))
 
+        # steps: opsiyonel sampling adım sayısı (hız/kalite dengesi). Verilmezse
+        # pipeline'ın kendi varsayılanları (12) aynen kullanılır → geriye dönük uyumlu.
+        # Verilirse üç aşamaya da (sparse-structure / shape-slat / tex-slat) uygulanır.
+        steps_raw = job_input.get("steps")
+        steps = int(steps_raw) if steps_raw is not None else None
+
         if resolution not in ALLOWED_RESOLUTIONS:
             return {"error": f"resolution 1024 veya 1536 olmalı (gelen: {resolution})"}
 
         image = _load_image(image_ref)
         pipeline = _load_pipeline()
 
+        run_kwargs = {}
+        if steps is not None:
+            step_params = {"steps": steps}
+            run_kwargs = {
+                "sparse_structure_sampler_params": step_params,
+                "shape_slat_sampler_params": step_params,
+                "tex_slat_sampler_params": step_params,
+            }
+
         mesh = pipeline.run(
             image,
             seed=seed,
             pipeline_type=RESOLUTION_TO_PIPELINE_TYPE[resolution],
+            **run_kwargs,
         )[0]
         mesh.simplify(16777216)  # nvdiffrast limiti (resmi örnek)
 
@@ -218,6 +234,8 @@ def handler(event):
             "resolution": resolution,
             "format": "glb",
             "seed": seed,
+            "texture_size": texture_size,
+            "steps": steps if steps is not None else "default(12)",
             "glb_size": len(glb_bytes),
         }
         # Küçükse inline base64; büyükse (RunPod output limiti) URL ile döndür.
