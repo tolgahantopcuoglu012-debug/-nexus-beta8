@@ -46,6 +46,47 @@ export default {
 
     const url = new URL(request.url);
 
+    // ── /download : GLB indirme proxy'si ──
+    // Barındırıcı (tmpfiles) iki nedenle tarayıcıdan doğrudan çekilemez:
+    //   1) /dl/<id>/<ad> linki 302 ile HTML ara sayfaya gider; gerçek dosya o sayfadaki
+    //      token'lı /dl/<token>/<id>/<ad> linkindedir.
+    //   2) Yanıtta Access-Control-Allow-Origin yok → tarayıcı fetch'i CORS'a takılır.
+    // Bu uç ikisini de çözer: ara sayfayı çözümler ve gövdeyi CORS başlığıyla akıtır.
+    if (url.pathname === '/download') {
+      let dlBody;
+      try {
+        dlBody = await request.json();
+      } catch {
+        return err('Invalid JSON');
+      }
+      const target = Array.isArray(dlBody.url) ? dlBody.url[0] : String(dlBody.url || '');
+      if (!target) return err('url gerekli');
+
+      try {
+        let res = await fetch(target, { redirect: 'follow' });
+        if (!res.ok) return err(`Download upstream ${res.status}`, 502);
+
+        if ((res.headers.get('Content-Type') || '').includes('text/html')) {
+          const html = await res.text();
+          const m = html.match(/href="(https:\/\/tmpfiles\.org\/dl\/[^"]+)"/);
+          if (!m) return err('Barındırıcı ara sayfasında indirme linki bulunamadı', 502);
+          res = await fetch(m[1], { redirect: 'follow' });
+          if (!res.ok) return err(`Download upstream ${res.status}`, 502);
+        }
+
+        return new Response(res.body, {
+          status: 200,
+          headers: {
+            ...CORS,
+            'Content-Type': 'model/gltf-binary',
+            'Cache-Control': 'no-store',
+          },
+        });
+      } catch (e) {
+        return err(`Download hatası: ${e.message}`, 502);
+      }
+    }
+
     // ── /generate : RunPod (Trellis 2) proxy ──
     // Anahtar koda gömülmez; RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID env'den okunur.
     if (url.pathname === '/generate') {
@@ -80,12 +121,19 @@ export default {
       if (!genBody.image) return err('image gerekli (base64 veya URL)');
       const resolution = Number(genBody.resolution) === 1536 ? 1536 : 1024;
 
+      // Kalite/hız parametreleri opsiyonel; verilmezse handler'ın optimize baz konfigü
+      // (steps=8 / texture_size=1024 / max_faces=150000) geçerli olur.
+      const input = { image: genBody.image, resolution, seed: genBody.seed };
+      for (const k of ['steps', 'texture_size', 'max_faces']) {
+        if (genBody[k] !== undefined && genBody[k] !== null) input[k] = Number(genBody[k]);
+      }
+
       // Trellis 2 üretimi uzun sürebildiği için async /run + poll kullanılır.
       console.log('[worker] generate -> runpod:', RUNPOD_ENDPOINT, '| resolution:', resolution);
       const res = await fetchWithBackoff(`${RUNPOD_BASE}/run`, {
         method: 'POST',
         headers: RP_AUTH,
-        body: JSON.stringify({ input: { image: genBody.image, resolution, seed: genBody.seed } }),
+        body: JSON.stringify({ input }),
       });
       const text = await res.text();
       console.log('[worker] generate status:', res.status);
