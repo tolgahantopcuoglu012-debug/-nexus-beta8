@@ -201,17 +201,19 @@ def handler(event):
         image_ref = job_input.get("image")
         resolution = int(job_input.get("resolution", 1024))
         seed = int(job_input.get("seed", 42))
-        texture_size = int(job_input.get("texture_size", 2048))
 
-        # steps: opsiyonel sampling adım sayısı (hız/kalite dengesi). Verilmezse
-        # pipeline'ın kendi varsayılanları (12) aynen kullanılır → geriye dönük uyumlu.
-        # Verilirse üç aşamaya da (sparse-structure / shape-slat / tex-slat) uygulanır.
-        steps_raw = job_input.get("steps")
-        steps = int(steps_raw) if steps_raw is not None else None
+        # ── Varsayılanlar = optimize edilmiş üretim baz konfigü (web/oyun-hazır,
+        # warm ~43s / ~7MB, +%33 marj @ $0.08). Hepsi input'tan override edilebilir
+        # (ör. 1536/premium kalite için texture_size=2048, max_faces=1000000, steps=12).
+        texture_size = int(job_input.get("texture_size", 1024))
 
-        # max_faces: decimation hedefi (üçgen). Verilmezse 1.000.000 = eski davranış.
-        max_faces_raw = job_input.get("max_faces")
-        max_faces = int(max_faces_raw) if max_faces_raw is not None else 1000000
+        # steps: sampling adım sayısı (hız/kalite dengesi). Üç aşamaya da
+        # (sparse-structure / shape-slat / tex-slat) uygulanır.
+        steps = int(job_input.get("steps", 8))
+
+        # max_faces: decimation hedefi (üçgen sayısı). GLB boyutunu + export/upload
+        # süresini domine eder.
+        max_faces = int(job_input.get("max_faces", 150000))
 
         if resolution not in ALLOWED_RESOLUTIONS:
             return {"error": f"resolution 1024 veya 1536 olmalı (gelen: {resolution})"}
@@ -219,14 +221,12 @@ def handler(event):
         image = _load_image(image_ref)
         pipeline = _load_pipeline()
 
-        run_kwargs = {}
-        if steps is not None:
-            step_params = {"steps": steps}
-            run_kwargs = {
-                "sparse_structure_sampler_params": step_params,
-                "shape_slat_sampler_params": step_params,
-                "tex_slat_sampler_params": step_params,
-            }
+        step_params = {"steps": steps}
+        run_kwargs = {
+            "sparse_structure_sampler_params": step_params,
+            "shape_slat_sampler_params": step_params,
+            "tex_slat_sampler_params": step_params,
+        }
 
         mesh = pipeline.run(
             image,
@@ -245,7 +245,7 @@ def handler(event):
             "format": "glb",
             "seed": seed,
             "texture_size": texture_size,
-            "steps": steps if steps is not None else "default(12)",
+            "steps": steps,
             "max_faces": max_faces,
             "glb_size": len(glb_bytes),
         }
