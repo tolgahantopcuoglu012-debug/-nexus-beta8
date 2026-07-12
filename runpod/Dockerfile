@@ -71,6 +71,15 @@ RUN source "$CONDA_DIR/etc/profile.d/conda.sh" \
 # 4.57.6 hem DinoV3'ü destekler (>=4.56.0) hem de bu kırılmayı içermez.
 RUN conda run -n trellis2 pip install --no-cache-dir "transformers==4.57.6"
 
+# ── flash-attn (önceden derlenmiş wheel) ──
+# setup.sh'daki `pip install flash-attn==2.7.3` build-isolation ile çalışır; flash-attn
+# setup.py torch'u import ettiği için izole build ortamında torch bulunmaz ve kurulum
+# SESSİZCE başarısız olur (setup.sh'da set -e yok → build yine COMPLETED). Sonuç:
+# runtime'da "No module named 'flash_attn'". Kaynak derlemesi yerine torch2.6/cu12/py310
+# için resmi önceden derlenmiş wheel'i (PyTorch pip ABI = cxx11abiFALSE) kuruyoruz.
+RUN conda run -n trellis2 pip install --no-cache-dir \
+        "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.6cxx11abiFALSE-cp310-cp310-linux_x86_64.whl"
+
 # ── RunPod SDK + handler bağımlılıkları (trellis2 env'ine) ──
 RUN conda run -n trellis2 pip install --no-cache-dir runpod requests
 
