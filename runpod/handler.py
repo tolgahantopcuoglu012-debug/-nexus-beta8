@@ -153,6 +153,43 @@ def _to_glb_bytes(mesh, texture_size: int) -> bytes:
         return tmp.read()
 
 
+# RunPod serverless çıktısı boyut-sınırlı: büyük base64 GLB'yi /status'a inline
+# döndürünce output tamamen düşüyor (job COMPLETED ama output boş). Bu yüzden GLB'yi
+# geçici bir dosya barındırıcıya yükleyip URL döndürüyoruz; yalnızca küçük dosyaları
+# inline base64 olarak veriyoruz.
+INLINE_MAX_BYTES = int(os.environ.get("GLB_INLINE_MAX_BYTES", 4_000_000))
+
+
+def _upload_glb(glb_bytes: bytes) -> str:
+    """GLB'yi geçici dosya barındırıcıya yükler, indirilebilir URL döndürür."""
+    # 1) tmpfiles.org — JSON {"data":{"url": "https://tmpfiles.org/<id>/<name>"}}
+    try:
+        resp = requests.post(
+            "https://tmpfiles.org/api/v1/upload",
+            files={"file": ("nexus.glb", glb_bytes, "model/gltf-binary")},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        url = resp.json()["data"]["url"]
+        # sayfa URL'sini doğrudan-indirme URL'sine çevir (/<id>/ -> /dl/<id>/)
+        return url.replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
+    except Exception as exc_tmp:  # noqa: BLE001
+        last_err = f"tmpfiles: {exc_tmp}"
+
+    # 2) 0x0.st — düz metin gövdede URL döner
+    try:
+        resp = requests.post(
+            "https://0x0.st",
+            files={"file": ("nexus.glb", glb_bytes, "model/gltf-binary")},
+            headers={"User-Agent": "nexus-trellis2/1.0"},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return resp.text.strip()
+    except Exception as exc_0x0:  # noqa: BLE001
+        raise RuntimeError(f"GLB upload başarısız ({last_err}; 0x0: {exc_0x0})")
+
+
 def handler(event):
     job_input = event.get("input") or {}
 
@@ -177,12 +214,18 @@ def handler(event):
 
         glb_bytes = _to_glb_bytes(mesh, texture_size=texture_size)
 
-        return {
-            "glb": base64.b64encode(glb_bytes).decode("utf-8"),
+        result = {
             "resolution": resolution,
             "format": "glb",
             "seed": seed,
+            "glb_size": len(glb_bytes),
         }
+        # Küçükse inline base64; büyükse (RunPod output limiti) URL ile döndür.
+        if len(glb_bytes) <= INLINE_MAX_BYTES:
+            result["glb"] = base64.b64encode(glb_bytes).decode("utf-8")
+        else:
+            result["glb_url"] = _upload_glb(glb_bytes)
+        return result
 
     except Exception as exc:  # noqa: BLE001 — hata istemciye anlamlı dönsün
         return {"error": str(exc)}
