@@ -48,9 +48,17 @@ def _load_pipeline():
 
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+    from huggingface_hub import snapshot_download
     from trellis2.pipelines import Trellis2ImageTo3DPipeline
 
-    pipe = Trellis2ImageTo3DPipeline.from_pretrained(MODEL_ID)
+    # from_pretrained, config içindeki ckpts/... alt-model yollarını f"{path}/{ckpt}"
+    # olarak çözer. path bir HF repo id ("microsoft/TRELLIS.2-4B") olduğunda bu birleşik
+    # id geçersiz olur ve fallback "ckpts/..."yi AYRI bir repo sanıp indirmeye çalışır
+    # → 401 Repository Not Found. Bu yüzden önce reponun TAMAMINI yerel bir klasöre indirip
+    # from_pretrained'e o yerel yolu veriyoruz; ckpts/... artık yerel dosya olarak çözülür.
+    local_dir = snapshot_download(MODEL_ID)
+
+    pipe = Trellis2ImageTo3DPipeline.from_pretrained(local_dir)
     pipe.cuda()
     _pipeline = pipe
     return _pipeline
