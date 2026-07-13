@@ -24,11 +24,28 @@ import base64
 import io
 import os
 import tempfile
+import time
 
 import requests
 from PIL import Image
 
 import runpod
+
+# ── Kalıcı model önbelleği (RunPod Network Volume) ──
+# Volume yokken model ağırlıkları (TRELLIS.2-4B + dinov3 + RMBG, ~17GB) HER soğuk
+# başlatmada HF'den yeniden iniyordu. Volume bağlıysa RunPod onu /runpod-volume'e
+# mount eder; HF cache'ini oraya alırsak ağırlıklar cold start'lar arasında yaşar.
+# NOT: bu env'ler huggingface_hub/transformers import EDİLMEDEN ÖNCE kurulmalı.
+VOLUME_PATH = os.environ.get("RUNPOD_VOLUME_PATH", "/runpod-volume")
+CACHE_ON_VOLUME = os.path.isdir(VOLUME_PATH)
+if CACHE_ON_VOLUME:
+    _hf_home = os.path.join(VOLUME_PATH, "hf")
+    os.makedirs(_hf_home, exist_ok=True)
+    os.environ["HF_HOME"] = _hf_home
+    os.environ["HF_HUB_CACHE"] = os.path.join(_hf_home, "hub")
+    print(f"model cache -> network volume: {_hf_home}", flush=True)
+else:
+    print("network volume YOK -> model her cold start'ta yeniden inecek", flush=True)
 
 # TRELLIS.2 pipeline, backbone olarak gated facebook/dinov3-... modelini indiriyor.
 # Bu repoya erişim için HF_TOKEN gerekli; endpoint'te tanımlıysa global olarak login ol.
@@ -59,6 +76,10 @@ ALLOWED_RESOLUTIONS = tuple(RESOLUTION_TO_PIPELINE_TYPE.keys())
 # ── Model tek sefer yüklenir (cold start), sonraki isteklerde yeniden kullanılır ──
 _pipeline = None
 
+# Cold start'ın nereye gittiğini ölçer (indirme mi, ağırlık yükleme mi, GPU'ya taşıma mı).
+# İlk (cold) işin çıktısına eklenir; warm işlerde {"cold": False} döner.
+_load_timings = {"cold": False}
+
 
 def _load_pipeline():
     global _pipeline
@@ -70,12 +91,15 @@ def _load_pipeline():
     from huggingface_hub import snapshot_download
     from trellis2.pipelines import Trellis2ImageTo3DPipeline
 
+    t0 = time.time()
+
     # from_pretrained, config içindeki ckpts/... alt-model yollarını f"{path}/{ckpt}"
     # olarak çözer. path bir HF repo id ("microsoft/TRELLIS.2-4B") olduğunda bu birleşik
     # id geçersiz olur ve fallback "ckpts/..."yi AYRI bir repo sanıp indirmeye çalışır
     # → 401 Repository Not Found. Bu yüzden önce reponun TAMAMINI yerel bir klasöre indirip
     # from_pretrained'e o yerel yolu veriyoruz; ckpts/... artık yerel dosya olarak çözülür.
     local_dir = snapshot_download(MODEL_ID, token=HF_TOKEN)
+    t_download = time.time() - t0
 
     # pipeline config'leri GATED HF repolarına işaret ediyor (image_cond_model →
     # facebook/dinov3-..., rembg_model → briaai/RMBG-2.0). Endpoint'teki HF_TOKEN
@@ -104,8 +128,26 @@ def _load_pipeline():
                 fh.write(patched)
             print(f"patched {cfg_name}: gated repos -> ungated mirrors", flush=True)
 
+    t1 = time.time()
     pipe = Trellis2ImageTo3DPipeline.from_pretrained(local_dir)
+    t_from_pretrained = time.time() - t1
+
+    t2 = time.time()
     pipe.cuda()
+    t_cuda = time.time() - t2
+
+    _load_timings.update(
+        {
+            "cold": True,
+            "cache_on_volume": CACHE_ON_VOLUME,
+            "download_s": round(t_download, 1),
+            "from_pretrained_s": round(t_from_pretrained, 1),
+            "to_gpu_s": round(t_cuda, 1),
+            "total_load_s": round(time.time() - t0, 1),
+        }
+    )
+    print(f"cold load timings: {_load_timings}", flush=True)
+
     _pipeline = pipe
     return _pipeline
 
@@ -219,7 +261,10 @@ def handler(event):
             return {"error": f"resolution 1024 veya 1536 olmalı (gelen: {resolution})"}
 
         image = _load_image(image_ref)
+
+        _was_cold = _pipeline is None
         pipeline = _load_pipeline()
+        load_stats = dict(_load_timings) if _was_cold else {"cold": False}
 
         step_params = {"steps": steps}
         run_kwargs = {
@@ -248,6 +293,7 @@ def handler(event):
             "steps": steps,
             "max_faces": max_faces,
             "glb_size": len(glb_bytes),
+            "load": load_stats,  # cold start teşhisi (indirme/yükleme/GPU kırılımı)
         }
         # Küçükse inline base64; büyükse (RunPod output limiti) URL ile döndür.
         if len(glb_bytes) <= INLINE_MAX_BYTES:
