@@ -530,7 +530,7 @@ textarea.prompt-input {
     <div class="panel-section tab-pane" id="PANE_TEXT3D">
       <div class="panel-title">🔮 YAZIDAN 3D ÜRET</div>
       <div style="font-size:7px;color:var(--muted);margin-bottom:6px">
-        Yazı → 3 varyant görsel → birini seç → 3D'ye dönüştür.
+        Yazı → aynı objenin 3 açısı (Ön / Yan / Arka) → en iyi açıyı seç → 3D'ye dönüştür.
       </div>
       <textarea class="prompt-input" id="FLUX_PROMPT" placeholder="Obje tarif et...&#10;Örn: steampunk mekanik ejderha"></textarea>
       <button class="gen-btn" id="BTN_FLUX" onclick="UI.runFluxVariants()">✨ 3 VARYANT ÜRET</button>
@@ -617,7 +617,7 @@ textarea.prompt-input {
 <!-- Yazı→3D: tam-ekran varyant seçim modalı -->
 <div id="FLUX_MODAL" class="flux-modal">
   <div class="flux-modal-head">
-    <span>🔮 Varyant Seç — büyük gör, birine tıkla, sonra 3D'ye dönüştür</span>
+    <span>🔮 Aynı objenin 3 açısı — Ön / Yan / Arka. 3D'de en iyi (en az arka uydurma) açıyı seç</span>
     <button class="fm-x" onclick="UI.closeVariantModal()">✕ Kapat</button>
   </div>
   <div class="flux-modal-grid" id="FLUX_MODAL_GRID"></div>
@@ -1371,6 +1371,7 @@ const API = (() => {
             dataUrl: 'data:image/png;base64,' + im.data,
             seed: im.seed,
             filename: im.filename,
+            angle: im.angle || null,          // 'Ön' | 'Yan' | 'Arka'
           }));
         }
         if (st.status === 'FAILED' || st.status === 'CANCELLED' || st.status === 'TIMED_OUT') {
@@ -1787,6 +1788,11 @@ const UI = (() => {
     }
   }
 
+  const _ANGLE_ICON = { 'Ön': '⬆️ Ön', 'Yan': '➡️ Yan', 'Arka': '🔄 Arka' };
+  function _angleLabel(v, i) {
+    return v && v.angle ? (_ANGLE_ICON[v.angle] || v.angle) : `Varyant ${i + 1}`;
+  }
+
   function _renderVariantCards() {
     const grid = document.getElementById('FLUX_MODAL_GRID');
     grid.innerHTML = '';
@@ -1795,9 +1801,9 @@ const UI = (() => {
       card.className = 'flux-card' + (i === _fluxSelected ? ' selected' : '');
       card.onclick = () => UI.selectVariant(i);
       card.innerHTML =
-        `<div class="flux-card-badge">Varyant ${i + 1}</div>` +
+        `<div class="flux-card-badge">${_angleLabel(v, i)}</div>` +
         `<button class="flux-card-zoom" title="Tam boy bak">🔍</button>` +
-        `<img src="${v.dataUrl}" alt="varyant ${i + 1}">` +
+        `<img src="${v.dataUrl}" alt="${_angleLabel(v, i)} açı">` +
         `<div class="flux-card-check">✓ SEÇİLİ — 3D'ye hazır</div>`;
       card.querySelector('.flux-card-zoom').onclick = (e) => { e.stopPropagation(); UI.openLightbox(i); };
       grid.appendChild(card);
@@ -1817,20 +1823,21 @@ const UI = (() => {
     document.querySelectorAll('#FLUX_MODAL_GRID .flux-card').forEach((el, i) => {
       el.classList.toggle('selected', i === idx);
     });
+    const lbl = _angleLabel(_fluxVariants[idx], idx);
     const mc = document.getElementById('FLUX_MODAL_CONVERT');
     if (mc) mc.disabled = false;
     const hint = document.getElementById('FLUX_MODAL_HINT');
-    if (hint) hint.textContent = `Varyant ${idx + 1} seçildi ✓ — sağdan 3D'ye dönüştür (veya başkasına tıkla)`;
+    if (hint) hint.textContent = `${lbl} açısı seçildi ✓ — sağdan 3D'ye dönüştür (veya başka açıya tıkla)`;
     // Kenar panel önizleme + buton
     const wrap  = document.getElementById('FLUX_SELECTED_WRAP');
     const thumb = document.getElementById('FLUX_SELECTED_THUMB');
     const stxt  = document.getElementById('FLUX_SELECTED_TXT');
     if (thumb) thumb.src = _fluxVariants[idx].dataUrl;
-    if (stxt) stxt.textContent = `Varyant ${idx + 1} seçili`;
+    if (stxt) stxt.textContent = `${lbl} açısı seçili`;
     if (wrap) wrap.style.display = 'block';
     const btn3d = document.getElementById('BTN_FLUX_3D');
     if (btn3d) { btn3d.style.display = 'block'; btn3d.disabled = false; }
-    log(`🖼 Varyant ${idx + 1} seçildi.`, 'lai');
+    log(`🖼 ${lbl} açısı seçildi.`, 'lai');
   }
 
   function openLightbox(idx) {
