@@ -38,6 +38,12 @@ RUN pip install --no-cache-dir \
         "diffusers>=0.32.0" "transformers>=4.44,<5" accelerate safetensors \
         gguf sentencepiece protobuf Pillow runpod requests huggingface_hub hf_transfer
 
+# ── SMOKE TEST: runtime startup import'larini build'de dogrula ──
+# Worker startup'ta 'import runpod' + handler'in _load import'lari calisir. Bunlar
+# kirilirsa worker sessizce unhealthy olur (log yok). Burada patlarsa CI logunda
+# tam traceback gorunur → kok neden okunabilir.
+RUN python -c "import runpod, torch, diffusers, transformers, gguf, accelerate, safetensors; from diffusers import FluxPipeline, FluxTransformer2DModel, GGUFQuantizationConfig; from transformers import T5EncoderModel; print('SMOKE OK | runpod', getattr(runpod,'__version__','?'), '| diffusers', diffusers.__version__, '| transformers', transformers.__version__)"
+
 # ── Ağırlıkları image'a bake et (runtime indirme YOK) ──
 # Kaynak ungated (Niansuh aynası + city96 GGUF) → HF token GEREKMEZ.
 COPY runpod/bake_flux.py /tmp/bake_flux.py
