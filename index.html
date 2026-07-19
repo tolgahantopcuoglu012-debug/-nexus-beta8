@@ -345,23 +345,80 @@ textarea.prompt-input {
   padding: 4px;
   margin-bottom: 6px;
 }
-/* Yazı→3D varyant grid + seçim + spinner */
-#FLUX_VARIANTS { display: grid; }
-.flux-thumb {
-  position: relative; cursor: pointer; border: 2px solid transparent;
-  border-radius: 4px; overflow: hidden; background: #000; aspect-ratio: 1;
-  transition: border-color .15s, transform .15s;
-}
-.flux-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.flux-thumb:hover { transform: scale(1.03); border-color: rgba(0,200,255,.5); }
-.flux-thumb.selected { border-color: var(--accent); box-shadow: 0 0 8px rgba(0,200,255,.6); }
-.flux-thumb .flux-badge {
-  position: absolute; top: 2px; left: 2px; font-size: 6px; padding: 1px 3px;
-  background: rgba(0,0,0,.7); color: var(--accent); border-radius: 3px;
-}
-.flux-thumb.selected .flux-badge::after { content: ' ✓'; }
+/* Yazı→3D — spinner + seçili küçük önizleme (kenar panel) */
 .flux-spin { display: inline-block; animation: fluxspin 1s linear infinite; }
 @keyframes fluxspin { to { transform: rotate(360deg); } }
+#FLUX_SELECTED_WRAP { margin-top: 8px; }
+#FLUX_SELECTED_THUMB {
+  width: 100%; border-radius: 6px; border: 2px solid var(--accent);
+  box-shadow: 0 0 10px rgba(0,200,255,.4); display: block;
+}
+.flux-reopen {
+  width: 100%; margin-top: 6px; font-size: 8px; padding: 6px; cursor: pointer;
+  background: rgba(0,200,255,.12); border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 4px;
+}
+
+/* Tam-ekran varyant seçim modalı */
+.flux-modal {
+  position: fixed; inset: 0; z-index: 2000; background: rgba(5,10,18,.97);
+  display: none; flex-direction: column; padding: 14px;
+}
+.flux-modal.open { display: flex; }
+.flux-modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  color: var(--accent); font-size: 12px; margin-bottom: 12px; flex-shrink: 0;
+}
+.flux-modal-head .fm-x {
+  background: none; border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px;
+}
+.flux-modal-grid {
+  flex: 1; display: grid; gap: 14px; overflow: auto; align-content: start;
+  grid-template-columns: repeat(3, 1fr); padding-bottom: 4px;
+}
+@media (max-width: 900px) { .flux-modal-grid { grid-template-columns: 1fr; max-width: 520px; margin: 0 auto; width: 100%; } }
+.flux-card {
+  position: relative; border: 3px solid transparent; border-radius: 12px;
+  overflow: hidden; cursor: pointer; background: #000; aspect-ratio: 1;
+  transition: border-color .15s, transform .12s, box-shadow .15s;
+}
+.flux-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.flux-card:hover { transform: scale(1.01); border-color: rgba(0,200,255,.55); }
+.flux-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 0 26px rgba(0,200,255,.55); }
+.flux-card-badge {
+  position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.72); color: #fff;
+  font-size: 11px; padding: 3px 9px; border-radius: 6px;
+}
+.flux-card-zoom {
+  position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,.72); color: #fff;
+  border: none; border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 14px;
+}
+.flux-card-check {
+  position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent);
+  color: #001018; font-weight: 700; text-align: center; font-size: 12px; padding: 6px;
+  opacity: 0; transition: opacity .15s;
+}
+.flux-card.selected .flux-card-check { opacity: 1; }
+.flux-modal-foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  margin-top: 12px; flex-shrink: 0;
+}
+#FLUX_MODAL_HINT { color: var(--muted); font-size: 10px; }
+.flux-cta { max-width: 360px; font-size: 12px !important; padding: 13px !important; margin: 0 !important; }
+.flux-cta:not(:disabled) {
+  background: var(--accent) !important; color: #001018 !important; font-weight: 700;
+  animation: ctaPulse 1.6s ease-in-out infinite;
+}
+@keyframes ctaPulse { 0%,100% { box-shadow: 0 0 14px rgba(0,200,255,.4); } 50% { box-shadow: 0 0 28px rgba(0,200,255,.85); } }
+
+/* Tam-boy tek görsel lightbox */
+.flux-lightbox {
+  position: fixed; inset: 0; z-index: 2100; background: rgba(0,0,0,.95);
+  display: none; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out;
+}
+.flux-lightbox.open { display: flex; }
+.flux-lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
 </style>
 </head>
 
@@ -483,8 +540,12 @@ textarea.prompt-input {
         <span class="flux-spin">⟳</span> <span id="FLUX_STATUS_TXT">Hazırlanıyor...</span>
       </div>
 
-      <!-- Varyant grid'i -->
-      <div id="FLUX_VARIANTS" style="display:none;gap:4px;margin-top:8px;grid-template-columns:1fr 1fr 1fr;"></div>
+      <!-- Seçili varyant önizleme (kartlar tam-ekran modalda açılır) -->
+      <div id="FLUX_SELECTED_WRAP" style="display:none;">
+        <img id="FLUX_SELECTED_THUMB" alt="seçili varyant">
+        <div id="FLUX_SELECTED_TXT" style="font-size:7px;color:var(--accent);margin-top:4px;text-align:center;"></div>
+        <button class="flux-reopen" onclick="UI.openVariantModal()">🖼 Varyantları Göster / Değiştir</button>
+      </div>
 
       <button class="gen-btn" id="BTN_FLUX_3D" disabled style="margin-top:8px;display:none;" onclick="UI.runVariantTo3D()">📦 SEÇİLENİ 3D'YE DÖNÜŞTÜR (-15 💎)</button>
     </div>
@@ -551,6 +612,24 @@ textarea.prompt-input {
     </div>
 
   </div>
+</div>
+
+<!-- Yazı→3D: tam-ekran varyant seçim modalı -->
+<div id="FLUX_MODAL" class="flux-modal">
+  <div class="flux-modal-head">
+    <span>🔮 Varyant Seç — büyük gör, birine tıkla, sonra 3D'ye dönüştür</span>
+    <button class="fm-x" onclick="UI.closeVariantModal()">✕ Kapat</button>
+  </div>
+  <div class="flux-modal-grid" id="FLUX_MODAL_GRID"></div>
+  <div class="flux-modal-foot">
+    <span id="FLUX_MODAL_HINT">Bir varyanta tıklayarak seç · 🔍 ile tam boy bak</span>
+    <button class="gen-btn flux-cta" id="FLUX_MODAL_CONVERT" disabled onclick="UI.runVariantTo3D()">📦 SEÇİLENİ 3D'YE DÖNÜŞTÜR (-15 💎)</button>
+  </div>
+</div>
+
+<!-- Tam-boy tek görsel lightbox -->
+<div id="FLUX_LIGHTBOX" class="flux-lightbox" onclick="UI.closeLightbox()">
+  <img id="FLUX_LIGHTBOX_IMG" alt="tam boy varyant">
 </div>
 
 <script>
@@ -1667,70 +1746,111 @@ const UI = (() => {
     reader.readAsDataURL(input.files[0]);
   }
 
-  // ── Yazıdan 3D: Flux varyant → seç → 3D ──
+  // ── Yazıdan 3D: Flux varyant → tam-ekran seç → 3D ──
   let _fluxVariants = [];   // [{ dataUrl, seed, filename }]
   let _fluxSelected = -1;
+
+  function _fluxStatus(show, txt) {
+    const s = document.getElementById('FLUX_STATUS');
+    if (s) s.style.display = show ? 'block' : 'none';
+    if (txt) { const t = document.getElementById('FLUX_STATUS_TXT'); if (t) t.textContent = txt; }
+  }
 
   async function runFluxVariants() {
     const prompt = document.getElementById('FLUX_PROMPT')?.value?.trim();
     if (!prompt) { log('⚠ Obje tarifi gir', 'lw'); return; }
 
-    const btn       = document.getElementById('BTN_FLUX');
-    const status    = document.getElementById('FLUX_STATUS');
-    const statusTxt = document.getElementById('FLUX_STATUS_TXT');
-    const grid      = document.getElementById('FLUX_VARIANTS');
-    const btn3d     = document.getElementById('BTN_FLUX_3D');
-
+    const btn = document.getElementById('BTN_FLUX');
     _fluxVariants = []; _fluxSelected = -1;
-    grid.style.display = 'none'; grid.innerHTML = '';
+    document.getElementById('FLUX_SELECTED_WRAP').style.display = 'none';
+    const btn3d = document.getElementById('BTN_FLUX_3D');
     btn3d.style.display = 'none'; btn3d.disabled = true;
     if (btn) btn.disabled = true;
-    status.style.display = 'block';
-    statusTxt.textContent = 'Varyantlar üretiliyor... (soğukta ilk üretim birkaç dk)';
+    _fluxStatus(true, 'Varyantlar üretiliyor... (soğukta ilk üretim birkaç dk)');
     log('🔮 Flux: 3 varyant üretiliyor...', 'lai');
-    log('ℹ Soğuk başlangıçta ilk üretim dakikalar sürebilir, lütfen bekle.', 'lai');
+    log('ℹ Türkçe yazabilirsin — otomatik İngilizceye çevrilir. Soğukta ilk üretim dakikalar sürebilir.', 'lai');
 
     try {
       const variants = await API.FLUX.generateVariants(prompt, { num_images: 3 }, (pct, st) => {
-        statusTxt.textContent = `${st} · %${Math.round(pct)}`;
+        _fluxStatus(true, `${st} · %${Math.round(pct)}`);
       });
       _fluxVariants = variants;
-      status.style.display = 'none';
-      grid.style.display = 'grid';
-      grid.innerHTML = '';
-      variants.forEach((v, i) => {
-        const d = document.createElement('div');
-        d.className = 'flux-thumb';
-        d.onclick = () => UI.selectVariant(i);
-        d.innerHTML = `<div class="flux-badge">${i + 1}</div><img src="${v.dataUrl}" alt="varyant ${i + 1}">`;
-        grid.appendChild(d);
-      });
-      btn3d.style.display = 'block';
-      log('✅ 3 varyant hazır — birine tıkla, sonra 3D\'ye dönüştür.', 'lok');
+      _fluxStatus(false);
+      _renderVariantCards();
+      openVariantModal();
+      log('✅ 3 varyant hazır — büyük görselden birini seç.', 'lok');
     } catch (e) {
-      status.style.display = 'none';
+      _fluxStatus(false);
       log('❌ Flux hata: ' + e.message, 'lw');
     } finally {
       if (btn) btn.disabled = false;
     }
   }
 
+  function _renderVariantCards() {
+    const grid = document.getElementById('FLUX_MODAL_GRID');
+    grid.innerHTML = '';
+    _fluxVariants.forEach((v, i) => {
+      const card = document.createElement('div');
+      card.className = 'flux-card' + (i === _fluxSelected ? ' selected' : '');
+      card.onclick = () => UI.selectVariant(i);
+      card.innerHTML =
+        `<div class="flux-card-badge">Varyant ${i + 1}</div>` +
+        `<button class="flux-card-zoom" title="Tam boy bak">🔍</button>` +
+        `<img src="${v.dataUrl}" alt="varyant ${i + 1}">` +
+        `<div class="flux-card-check">✓ SEÇİLİ — 3D'ye hazır</div>`;
+      card.querySelector('.flux-card-zoom').onclick = (e) => { e.stopPropagation(); UI.openLightbox(i); };
+      grid.appendChild(card);
+    });
+  }
+
+  function openVariantModal() {
+    if (!_fluxVariants.length) { log('⚠ Önce varyant üret', 'lw'); return; }
+    document.getElementById('FLUX_MODAL').classList.add('open');
+  }
+  function closeVariantModal() {
+    document.getElementById('FLUX_MODAL').classList.remove('open');
+  }
+
   function selectVariant(idx) {
     _fluxSelected = idx;
-    document.querySelectorAll('#FLUX_VARIANTS .flux-thumb').forEach((el, i) => {
+    document.querySelectorAll('#FLUX_MODAL_GRID .flux-card').forEach((el, i) => {
       el.classList.toggle('selected', i === idx);
     });
+    const mc = document.getElementById('FLUX_MODAL_CONVERT');
+    if (mc) mc.disabled = false;
+    const hint = document.getElementById('FLUX_MODAL_HINT');
+    if (hint) hint.textContent = `Varyant ${idx + 1} seçildi ✓ — sağdan 3D'ye dönüştür (veya başkasına tıkla)`;
+    // Kenar panel önizleme + buton
+    const wrap  = document.getElementById('FLUX_SELECTED_WRAP');
+    const thumb = document.getElementById('FLUX_SELECTED_THUMB');
+    const stxt  = document.getElementById('FLUX_SELECTED_TXT');
+    if (thumb) thumb.src = _fluxVariants[idx].dataUrl;
+    if (stxt) stxt.textContent = `Varyant ${idx + 1} seçili`;
+    if (wrap) wrap.style.display = 'block';
     const btn3d = document.getElementById('BTN_FLUX_3D');
-    if (btn3d) btn3d.disabled = false;
+    if (btn3d) { btn3d.style.display = 'block'; btn3d.disabled = false; }
     log(`🖼 Varyant ${idx + 1} seçildi.`, 'lai');
+  }
+
+  function openLightbox(idx) {
+    const img = document.getElementById('FLUX_LIGHTBOX_IMG');
+    if (img && _fluxVariants[idx]) img.src = _fluxVariants[idx].dataUrl;
+    document.getElementById('FLUX_LIGHTBOX').classList.add('open');
+  }
+  function closeLightbox() {
+    document.getElementById('FLUX_LIGHTBOX').classList.remove('open');
   }
 
   async function runVariantTo3D() {
     if (_fluxSelected < 0 || !_fluxVariants[_fluxSelected]) { log('⚠ Önce bir varyant seç', 'lw'); return; }
     if (credits.get() < 15) { log('⚠ Yetersiz kredi (min 15)', 'lw'); return; }
+    closeVariantModal();
 
     const btn3d = document.getElementById('BTN_FLUX_3D');
+    const mc = document.getElementById('FLUX_MODAL_CONVERT');
     if (btn3d) btn3d.disabled = true;
+    if (mc) mc.disabled = true;
     const dataUrl = _fluxVariants[_fluxSelected].dataUrl;
 
     try {
@@ -1750,6 +1870,7 @@ const UI = (() => {
       log('❌ Hata: ' + e.message, 'lw');
     } finally {
       if (btn3d) btn3d.disabled = false;
+      if (mc) mc.disabled = false;
     }
   }
 
@@ -1817,7 +1938,8 @@ const UI = (() => {
   return {
     log, inspector, gallery, switchTab, credits,
     runGenerate, runImageTo3D, exportSTL, setImgApi,
-    runFluxVariants, selectVariant, runVariantTo3D
+    runFluxVariants, selectVariant, runVariantTo3D,
+    openVariantModal, closeVariantModal, openLightbox, closeLightbox
   };
 })();
 
@@ -1859,6 +1981,15 @@ document.addEventListener('DOMContentLoaded', () => {
       UI.log('📸 Görsel yüklendi: ' + file.name, 'lok');
     }
   });
+});
+
+// ESC: önce lightbox, sonra varyant modalı kapansın
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const lb = document.getElementById('FLUX_LIGHTBOX');
+  const md = document.getElementById('FLUX_MODAL');
+  if (lb && lb.classList.contains('open')) lb.classList.remove('open');
+  else if (md && md.classList.contains('open')) md.classList.remove('open');
 });
 </script>
 

@@ -115,7 +115,27 @@ export default {
       if (!fBody.prompt) return err('prompt gerekli');
       const n = Math.max(1, Math.min(4, parseInt(fBody.num_images) || 3)); // 1-4 varyant
 
-      const input = { prompt: String(fBody.prompt), num_images: n };
+      // ── Prompt çevirisi (Türkçe/herhangi bir dil → İngilizce) ──
+      // Flux İngilizce ister. Cloudflare Workers AI (aynı worker, harici API yok, ücretsiz
+      // kota). Küçük instruct-LLM tek çağrıda hem dili algılar hem İngilizceyse aynen bırakır.
+      // Çeviri hata verirse / AI binding yoksa orijinal prompt kullanılır (üretim kesilmez).
+      // İstemci `translate:false` göndererek atlatabilir.
+      let engPrompt = String(fBody.prompt);
+      if (env.AI && fBody.translate !== false) {
+        try {
+          const ai = await env.AI.run('@cf/meta/llama-4-scout-17b-16e-instruct', {
+            messages: [
+              { role: 'system', content: 'You translate image-generation prompts into English. If the text is already English, return it unchanged. Reply with ONLY the English text — no quotes, no explanations, no preamble.' },
+              { role: 'user', content: engPrompt },
+            ],
+            max_tokens: 256,
+          });
+          const t = ((ai && ai.response) || '').trim().replace(/^["']+|["']+$/g, '').trim();
+          if (t) engPrompt = t;
+        } catch (e) { /* çeviri başarısız / model yoksa → orijinal prompt (üretim kesilmez) */ }
+      }
+
+      const input = { prompt: engPrompt, num_images: n };
       for (const k of ['steps', 'width', 'height', 'seed']) {
         if (fBody[k] !== undefined && fBody[k] !== null) input[k] = Number(fBody[k]);
       }
@@ -125,7 +145,7 @@ export default {
       });
       const text = await res.text();
       let data; try { data = JSON.parse(text); } catch { data = { raw:text }; }
-      return json(data, res.status);
+      return json({ ...data, _translated: engPrompt }, res.status);
     }
 
     // ── /generate : RunPod (Trellis 2) proxy ──

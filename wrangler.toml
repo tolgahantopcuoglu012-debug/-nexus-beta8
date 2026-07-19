@@ -1,3 +1,7 @@
 name = "nexus-replicate-proxy"
 main = "worker.js"
 compatibility_date = "2026-07-01"
+
+# Workers AI — /flux prompt çevirisi (Türkçe/herhangi bir dil → İngilizce)
+[ai]
+binding = "AI"
