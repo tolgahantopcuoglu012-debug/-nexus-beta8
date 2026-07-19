@@ -87,6 +87,62 @@ export default {
       }
     }
 
+    // ── /flux : RunPod (FLUX.1-schnell, ComfyUI worker) text→görsel proxy ──
+    // Temiz API: { prompt, num_images } → tek işte N varyant (farklı seed).
+    // İçeride ComfyUI workflow JSON'una çevrilir; frontend workflow bilmez.
+    // Çıktı: worker-comfyui { output: { images:[{type:"base64"|"s3_url", data}] } }.
+    if (url.pathname === '/flux') {
+      const RUNPOD_KEY = env.RUNPOD_API_KEY;
+      const FLUX_ENDPOINT = env.FLUX_ENDPOINT_ID || 'ytp43akq7q07ts';
+      if (!RUNPOD_KEY) return err('RUNPOD_API_KEY env tanımlı değil', 500);
+
+      let fBody;
+      try { fBody = await request.json(); } catch { return err('Invalid JSON'); }
+
+      const FLUX_BASE = `https://api.runpod.ai/v2/${FLUX_ENDPOINT}`;
+      const RP_AUTH = { 'Authorization': `Bearer ${RUNPOD_KEY}`, 'Content-Type': 'application/json' };
+
+      // Durum sorgulama: { action:'poll', jobId }
+      if (fBody.action === 'poll') {
+        if (!fBody.jobId) return err('jobId gerekli');
+        const res = await fetchWithBackoff(`${FLUX_BASE}/status/${fBody.jobId}`, { headers: RP_AUTH });
+        return json(await res.json(), res.status);
+      }
+
+      if (!fBody.prompt) return err('prompt gerekli');
+      // Trellis-hazır default şablon: tek obje, ortalanmış, düz arka plan, 3d ürün render.
+      const SUFFIX = 'single object, centered, full object in frame, clean plain light-grey background, 3d product render, even studio lighting, no other objects, high detail';
+      const promptText = `${String(fBody.prompt)}, ${SUFFIX}`;
+      const n = Math.max(1, Math.min(4, parseInt(fBody.num_images) || 3)); // 1-4 varyant
+
+      // ComfyUI flux1-schnell workflow: paylaşılan yükleyiciler + N sampler dalı.
+      const wf = {
+        '5':  { inputs:{ width:1024, height:1024, batch_size:1 }, class_type:'EmptyLatentImage' },
+        '6':  { inputs:{ text:promptText, clip:['11',0] }, class_type:'CLIPTextEncode' },
+        '10': { inputs:{ vae_name:'ae.safetensors' }, class_type:'VAELoader' },
+        '11': { inputs:{ clip_name1:'t5xxl_fp8_e4m3fn.safetensors', clip_name2:'clip_l.safetensors', type:'flux' }, class_type:'DualCLIPLoader' },
+        '12': { inputs:{ unet_name:'flux1-schnell.safetensors', weight_dtype:'fp8_e4m3fn' }, class_type:'UNETLoader' },
+        '16': { inputs:{ sampler_name:'euler' }, class_type:'KSamplerSelect' },
+        '17': { inputs:{ scheduler:'sgm_uniform', steps:4, denoise:1, model:['12',0] }, class_type:'BasicScheduler' },
+        '22': { inputs:{ model:['12',0], conditioning:['6',0] }, class_type:'BasicGuider' },
+      };
+      for (let i = 0; i < n; i++) {
+        const b = 100 + i*10;
+        const seed = Math.floor(Math.random() * 2147483647) + 1;
+        wf[String(b)]   = { inputs:{ noise_seed:seed }, class_type:'RandomNoise' };
+        wf[String(b+1)] = { inputs:{ noise:[String(b),0], guider:['22',0], sampler:['16',0], sigmas:['17',0], latent_image:['5',0] }, class_type:'SamplerCustomAdvanced' };
+        wf[String(b+2)] = { inputs:{ samples:[String(b+1),0], vae:['10',0] }, class_type:'VAEDecode' };
+        wf[String(b+3)] = { inputs:{ filename_prefix:`variant_${i+1}`, images:[String(b+2),0] }, class_type:'SaveImage' };
+      }
+
+      const res = await fetchWithBackoff(`${FLUX_BASE}/run`, {
+        method: 'POST', headers: RP_AUTH, body: JSON.stringify({ input:{ workflow:wf } }),
+      });
+      const text = await res.text();
+      let data; try { data = JSON.parse(text); } catch { data = { raw:text }; }
+      return json(data, res.status);
+    }
+
     // ── /generate : RunPod (Trellis 2) proxy ──
     // Anahtar koda gömülmez; RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID env'den okunur.
     if (url.pathname === '/generate') {
