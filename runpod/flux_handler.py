@@ -24,8 +24,9 @@ import runpod  # hafif, saf-python; tepede güvenli
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "/models")
 GGUF_PATH = os.path.join(MODEL_DIR, "transformer", "flux1-schnell-Q4_K_S.gguf")
-SUFFIX = ("single object, centered, full object in frame, clean plain light-grey "
-          "background, 3d product render, even studio lighting, no other objects, high detail")
+SUFFIX = ("single object, centered, full object in frame, three-quarter view, "
+          "slightly elevated camera angle, clean plain light-grey background, "
+          "3d product render, even studio lighting, no other objects, high detail")
 
 _pipe = None
 
