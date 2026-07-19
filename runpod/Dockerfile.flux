@@ -36,7 +36,7 @@ RUN pip install --no-cache-dir \
 # diffusers>=0.32: FluxTransformer2DModel.from_single_file + GGUFQuantizationConfig.
 RUN pip install --no-cache-dir \
         "diffusers>=0.32.0" "transformers>=4.44,<5" accelerate safetensors \
-        gguf sentencepiece protobuf Pillow runpod requests "huggingface_hub[hf_transfer]"
+        gguf sentencepiece protobuf Pillow runpod requests huggingface_hub hf_transfer
 
 # ── Ağırlıkları image'a bake et (runtime indirme YOK) ──
 # Kaynak ungated (Niansuh aynası + city96 GGUF) → HF token GEREKMEZ.
