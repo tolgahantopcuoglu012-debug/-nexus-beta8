@@ -109,34 +109,19 @@ export default {
         return json(await res.json(), res.status);
       }
 
+      // İş başlatma: { prompt, num_images } → minimal diffusers handler (ComfyUI YOK).
+      // SUFFIX artık RunPod handler'ında (3D-ideal açı dahil); frontend ham prompt yollar.
+      // Çıktı (poll COMPLETED): output.images[] = [{ type:"base64", data, filename, seed }].
       if (!fBody.prompt) return err('prompt gerekli');
-      // Trellis-hazır default şablon: tek obje, ortalanmış, düz arka plan, 3d ürün render.
-      const SUFFIX = 'single object, centered, full object in frame, clean plain light-grey background, 3d product render, even studio lighting, no other objects, high detail';
-      const promptText = `${String(fBody.prompt)}, ${SUFFIX}`;
       const n = Math.max(1, Math.min(4, parseInt(fBody.num_images) || 3)); // 1-4 varyant
 
-      // ComfyUI flux1-schnell workflow: paylaşılan yükleyiciler + N sampler dalı.
-      const wf = {
-        '5':  { inputs:{ width:1024, height:1024, batch_size:1 }, class_type:'EmptyLatentImage' },
-        '6':  { inputs:{ text:promptText, clip:['11',0] }, class_type:'CLIPTextEncode' },
-        '10': { inputs:{ vae_name:'ae.safetensors' }, class_type:'VAELoader' },
-        '11': { inputs:{ clip_name1:'t5xxl_fp8_e4m3fn.safetensors', clip_name2:'clip_l.safetensors', type:'flux' }, class_type:'DualCLIPLoader' },
-        '12': { inputs:{ unet_name:'flux1-schnell.safetensors', weight_dtype:'fp8_e4m3fn' }, class_type:'UNETLoader' },
-        '16': { inputs:{ sampler_name:'euler' }, class_type:'KSamplerSelect' },
-        '17': { inputs:{ scheduler:'sgm_uniform', steps:4, denoise:1, model:['12',0] }, class_type:'BasicScheduler' },
-        '22': { inputs:{ model:['12',0], conditioning:['6',0] }, class_type:'BasicGuider' },
-      };
-      for (let i = 0; i < n; i++) {
-        const b = 100 + i*10;
-        const seed = Math.floor(Math.random() * 2147483647) + 1;
-        wf[String(b)]   = { inputs:{ noise_seed:seed }, class_type:'RandomNoise' };
-        wf[String(b+1)] = { inputs:{ noise:[String(b),0], guider:['22',0], sampler:['16',0], sigmas:['17',0], latent_image:['5',0] }, class_type:'SamplerCustomAdvanced' };
-        wf[String(b+2)] = { inputs:{ samples:[String(b+1),0], vae:['10',0] }, class_type:'VAEDecode' };
-        wf[String(b+3)] = { inputs:{ filename_prefix:`variant_${i+1}`, images:[String(b+2),0] }, class_type:'SaveImage' };
+      const input = { prompt: String(fBody.prompt), num_images: n };
+      for (const k of ['steps', 'width', 'height', 'seed']) {
+        if (fBody[k] !== undefined && fBody[k] !== null) input[k] = Number(fBody[k]);
       }
 
       const res = await fetchWithBackoff(`${FLUX_BASE}/run`, {
-        method: 'POST', headers: RP_AUTH, body: JSON.stringify({ input:{ workflow:wf } }),
+        method: 'POST', headers: RP_AUTH, body: JSON.stringify({ input }),
       });
       const text = await res.text();
       let data; try { data = JSON.parse(text); } catch { data = { raw:text }; }

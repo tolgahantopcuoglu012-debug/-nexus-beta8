@@ -345,6 +345,23 @@ textarea.prompt-input {
   padding: 4px;
   margin-bottom: 6px;
 }
+/* Yazı→3D varyant grid + seçim + spinner */
+#FLUX_VARIANTS { display: grid; }
+.flux-thumb {
+  position: relative; cursor: pointer; border: 2px solid transparent;
+  border-radius: 4px; overflow: hidden; background: #000; aspect-ratio: 1;
+  transition: border-color .15s, transform .15s;
+}
+.flux-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.flux-thumb:hover { transform: scale(1.03); border-color: rgba(0,200,255,.5); }
+.flux-thumb.selected { border-color: var(--accent); box-shadow: 0 0 8px rgba(0,200,255,.6); }
+.flux-thumb .flux-badge {
+  position: absolute; top: 2px; left: 2px; font-size: 6px; padding: 1px 3px;
+  background: rgba(0,0,0,.7); color: var(--accent); border-radius: 3px;
+}
+.flux-thumb.selected .flux-badge::after { content: ' ✓'; }
+.flux-spin { display: inline-block; animation: fluxspin 1s linear infinite; }
+@keyframes fluxspin { to { transform: rotate(360deg); } }
 </style>
 </head>
 
@@ -369,6 +386,7 @@ textarea.prompt-input {
     <div class="panel-section" style="padding-bottom:0">
       <div class="tabs">
         <button class="tab-btn active" id="TAB_PROMPT" onclick="UI.switchTab('prompt')">✏️ Prompt</button>
+        <button class="tab-btn" id="TAB_TEXT3D" onclick="UI.switchTab('text3d')">🔮 Yazı→3D</button>
         <button class="tab-btn" id="TAB_IMAGE"  onclick="UI.switchTab('image')">🖼 Görsel</button>
         <button class="tab-btn" id="TAB_PRINT"  onclick="UI.switchTab('print')">🖨 Baskı</button>
       </div>
@@ -449,6 +467,26 @@ textarea.prompt-input {
         </div>
       </div>
       <button class="gen-btn" id="BTN_IMG" disabled onclick="UI.runImageTo3D()">🖼→📦 3D'YE DÖNÜŞTÜR (-15 💎)</button>
+    </div>
+
+    <!-- TEXT → 3D (Flux varyant → seç → 3D) -->
+    <div class="panel-section tab-pane" id="PANE_TEXT3D">
+      <div class="panel-title">🔮 YAZIDAN 3D ÜRET</div>
+      <div style="font-size:7px;color:var(--muted);margin-bottom:6px">
+        Yazı → 3 varyant görsel → birini seç → 3D'ye dönüştür.
+      </div>
+      <textarea class="prompt-input" id="FLUX_PROMPT" placeholder="Obje tarif et...&#10;Örn: steampunk mekanik ejderha"></textarea>
+      <button class="gen-btn" id="BTN_FLUX" onclick="UI.runFluxVariants()">✨ 3 VARYANT ÜRET</button>
+
+      <!-- Durum / bekleme göstergesi -->
+      <div id="FLUX_STATUS" style="display:none;font-size:7px;color:var(--accent);margin-top:8px;text-align:center;line-height:1.5;">
+        <span class="flux-spin">⟳</span> <span id="FLUX_STATUS_TXT">Hazırlanıyor...</span>
+      </div>
+
+      <!-- Varyant grid'i -->
+      <div id="FLUX_VARIANTS" style="display:none;gap:4px;margin-top:8px;grid-template-columns:1fr 1fr 1fr;"></div>
+
+      <button class="gen-btn" id="BTN_FLUX_3D" disabled style="margin-top:8px;display:none;" onclick="UI.runVariantTo3D()">📦 SEÇİLENİ 3D'YE DÖNÜŞTÜR (-15 💎)</button>
     </div>
 
     <!-- PRINT -->
@@ -1215,7 +1253,59 @@ const API = (() => {
     return { imageToGLB };
   })();
 
-  return { textTo3D, imageTo3D, TRIPOSG, NEXUS };
+  // ── FLUX: Yazıdan 3 varyant görsel (RunPod, worker /flux proxy'si) ──
+  const FLUX = (() => {
+    const PROXY   = 'https://nexus-replicate-proxy.tolgahantopcuoglu012.workers.dev';
+    const POLL_MS = 4000;
+    // Soğuk başlangıçta imaj yüklenirken üretim birkaç dakika sürebilir.
+    const MAX_ATTEMPTS = 150;
+
+    async function _post(body) {
+      const res = await fetch(PROXY + '/flux', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`Flux proxy ${res.status}: ${await res.text()}`);
+      return res.json();
+    }
+
+    // prompt → [{ dataUrl, seed, filename }, ...]  (num_images kadar varyant)
+    // SUFFIX + 3D-ideal açı RunPod handler'ında eklenir; burada ham prompt yollanır.
+    async function generateVariants(prompt, opts, onProgress) {
+      opts = opts || {};
+      const job = await _post({ prompt, num_images: opts.num_images || 3 });
+      if (job.error) throw new Error(job.error);
+      if (!job.id) throw new Error('Flux job ID alınamadı');
+
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        const st = await _post({ action: 'poll', jobId: job.id });
+        if (onProgress) onProgress(Math.min(5 + i * 1.2, 92), st.status || 'IN_QUEUE');
+
+        if (st.status === 'COMPLETED') {
+          const out = st.output || {};
+          if (out.error) throw new Error(out.error);
+          const imgs = out.images || [];
+          if (!imgs.length) throw new Error('Çıktıda görsel yok');
+          return imgs.map(im => ({
+            dataUrl: 'data:image/png;base64,' + im.data,
+            seed: im.seed,
+            filename: im.filename,
+          }));
+        }
+        if (st.status === 'FAILED' || st.status === 'CANCELLED' || st.status === 'TIMED_OUT') {
+          const detail = (st.output && (st.output.error || st.output.stage)) || st.error || st.status;
+          throw new Error('RunPod: ' + detail);
+        }
+      }
+      throw new Error('Zaman aşımı');
+    }
+
+    return { generateVariants };
+  })();
+
+  return { textTo3D, imageTo3D, TRIPOSG, NEXUS, FLUX };
 })();
 
 
@@ -1577,6 +1667,92 @@ const UI = (() => {
     reader.readAsDataURL(input.files[0]);
   }
 
+  // ── Yazıdan 3D: Flux varyant → seç → 3D ──
+  let _fluxVariants = [];   // [{ dataUrl, seed, filename }]
+  let _fluxSelected = -1;
+
+  async function runFluxVariants() {
+    const prompt = document.getElementById('FLUX_PROMPT')?.value?.trim();
+    if (!prompt) { log('⚠ Obje tarifi gir', 'lw'); return; }
+
+    const btn       = document.getElementById('BTN_FLUX');
+    const status    = document.getElementById('FLUX_STATUS');
+    const statusTxt = document.getElementById('FLUX_STATUS_TXT');
+    const grid      = document.getElementById('FLUX_VARIANTS');
+    const btn3d     = document.getElementById('BTN_FLUX_3D');
+
+    _fluxVariants = []; _fluxSelected = -1;
+    grid.style.display = 'none'; grid.innerHTML = '';
+    btn3d.style.display = 'none'; btn3d.disabled = true;
+    if (btn) btn.disabled = true;
+    status.style.display = 'block';
+    statusTxt.textContent = 'Varyantlar üretiliyor... (soğukta ilk üretim birkaç dk)';
+    log('🔮 Flux: 3 varyant üretiliyor...', 'lai');
+    log('ℹ Soğuk başlangıçta ilk üretim dakikalar sürebilir, lütfen bekle.', 'lai');
+
+    try {
+      const variants = await API.FLUX.generateVariants(prompt, { num_images: 3 }, (pct, st) => {
+        statusTxt.textContent = `${st} · %${Math.round(pct)}`;
+      });
+      _fluxVariants = variants;
+      status.style.display = 'none';
+      grid.style.display = 'grid';
+      grid.innerHTML = '';
+      variants.forEach((v, i) => {
+        const d = document.createElement('div');
+        d.className = 'flux-thumb';
+        d.onclick = () => UI.selectVariant(i);
+        d.innerHTML = `<div class="flux-badge">${i + 1}</div><img src="${v.dataUrl}" alt="varyant ${i + 1}">`;
+        grid.appendChild(d);
+      });
+      btn3d.style.display = 'block';
+      log('✅ 3 varyant hazır — birine tıkla, sonra 3D\'ye dönüştür.', 'lok');
+    } catch (e) {
+      status.style.display = 'none';
+      log('❌ Flux hata: ' + e.message, 'lw');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function selectVariant(idx) {
+    _fluxSelected = idx;
+    document.querySelectorAll('#FLUX_VARIANTS .flux-thumb').forEach((el, i) => {
+      el.classList.toggle('selected', i === idx);
+    });
+    const btn3d = document.getElementById('BTN_FLUX_3D');
+    if (btn3d) btn3d.disabled = false;
+    log(`🖼 Varyant ${idx + 1} seçildi.`, 'lai');
+  }
+
+  async function runVariantTo3D() {
+    if (_fluxSelected < 0 || !_fluxVariants[_fluxSelected]) { log('⚠ Önce bir varyant seç', 'lw'); return; }
+    if (credits.get() < 15) { log('⚠ Yetersiz kredi (min 15)', 'lw'); return; }
+
+    const btn3d = document.getElementById('BTN_FLUX_3D');
+    if (btn3d) btn3d.disabled = true;
+    const dataUrl = _fluxVariants[_fluxSelected].dataUrl;
+
+    try {
+      log('🔷 NEXUS (Trellis 2) ile 3D\'ye dönüştürülüyor...', 'lai');
+      log('ℹ Soğuk başlangıçta ilk üretim 4-5 dk sürebilir.', 'lai');
+      const buffer = await API.NEXUS.imageToGLB(dataUrl, { resolution: 1024, steps: 8 }, (pct, st) => {
+        log('⟳ NEXUS: ' + st + ' %' + pct, 'lai');
+      });
+      const targetSize = parseFloat(document.getElementById('SCALE_SLIDER')?.value || 2);
+      Engine.clearModels();
+      const model = await Engine.loadModel(buffer, 'flux_3d', targetSize, true);
+      Editor.Selection.select(model);
+      gallery.add('Yazı→3D', 'flux_3d', buffer);
+      credits.deduct(15);
+      log('✅ Model hazır!', 'lok');
+    } catch (e) {
+      log('❌ Hata: ' + e.message, 'lw');
+    } finally {
+      if (btn3d) btn3d.disabled = false;
+    }
+  }
+
   // ── STL Export ──
   function exportSTL() {
     const group = Engine.userGroup;
@@ -1640,7 +1816,8 @@ const UI = (() => {
 
   return {
     log, inspector, gallery, switchTab, credits,
-    runGenerate, runImageTo3D, exportSTL, setImgApi
+    runGenerate, runImageTo3D, exportSTL, setImgApi,
+    runFluxVariants, selectVariant, runVariantTo3D
   };
 })();
 
