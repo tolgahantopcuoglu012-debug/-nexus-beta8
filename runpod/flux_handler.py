@@ -24,9 +24,19 @@ import runpod  # hafif, saf-python; tepede güvenli
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "/models")
 GGUF_PATH = os.path.join(MODEL_DIR, "transformer", "flux1-schnell-Q4_K_S.gguf")
-SUFFIX = ("single object, centered, full object in frame, three-quarter view, "
-          "slightly elevated camera angle, clean plain light-grey background, "
-          "3d product render, even studio lighting, no other objects, high detail")
+
+# Açı-nötr taban stil (kamera açısı AYRI eklenir).
+BASE = ("single object, centered, full object in frame, clean plain light-grey "
+        "background, 3d product render, even studio lighting, no other objects, high detail")
+
+# Akıllı varyant stratejisi: 3 varyant = 3 farklı AÇI (aynı seed → tutarlı obje).
+# Kullanıcı hangi açının 3D'de en iyi (en az arka-uydurma) sonucu verdiğini seçer.
+# (label, açı ifadesi) — sıra: ön → yan → arka.
+ANGLES = [
+    ("Ön",   "three-quarter front view, slightly elevated camera angle"),
+    ("Yan",  "perfect side profile view, exact orthographic side angle, straight-on from the side"),
+    ("Arka", "three-quarter rear view seen from behind, slightly elevated camera angle"),
+]
 
 _pipe = None
 
@@ -130,12 +140,17 @@ def handler(event):
             return {"error": "prompt gerekli (veya diag:true)"}
 
         import torch
-        full = f"{prompt}, {SUFFIX}"
         n = max(1, min(4, int(inp.get("num_images", 3))))
         steps = int(inp.get("steps", 4))
         width = int(inp.get("width", 1024))
         height = int(inp.get("height", 1024))
         base_seed = inp.get("seed", None)
+        # Açı-modu (varsayılan AÇIK): 3 varyant = ön/yan/arka, AYNI seed (tutarlı obje).
+        # angles:false → eski davranış (aynı ön açı, farklı seed).
+        angle_mode = inp.get("angles", True) is not False
+
+        # Açı modunda tek seed tüm varyantlarda paylaşılır → aynı obje, farklı açı.
+        shared_seed = int(base_seed) if base_seed is not None else int(torch.randint(1, 2_147_483_647, (1,)).item())
 
         stage = "load"
         pipe = _load()
@@ -143,16 +158,25 @@ def handler(event):
         stage = "generate"
         images = []
         for i in range(n):
-            seed = int(base_seed) + i if base_seed is not None else int(torch.randint(1, 2_147_483_647, (1,)).item())
+            if angle_mode:
+                label, angle = ANGLES[i % len(ANGLES)]
+                full = f"{prompt}, {angle}, {BASE}"
+                seed = shared_seed                      # tutarlı obje
+            else:
+                label, angle = None, None
+                full = f"{prompt}, {ANGLES[0][1]}, {BASE}"
+                seed = (int(base_seed) + i) if base_seed is not None else int(torch.randint(1, 2_147_483_647, (1,)).item())
             gen = torch.Generator(device="cpu").manual_seed(seed)
             img = pipe(full, num_inference_steps=steps, guidance_scale=0.0,
                        width=width, height=height, generator=gen).images[0]
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             images.append({"type": "base64", "data": base64.b64encode(buf.getvalue()).decode(),
-                           "filename": f"variant_{i + 1}.png", "seed": seed})
-            print(f"[gen] variant {i + 1}/{n} seed={seed} ok", flush=True)
-        return {"images": images, "prompt": full, "steps": steps}
+                           "filename": f"variant_{i + 1}.png", "seed": seed,
+                           "angle": label, "angle_prompt": angle})
+            print(f"[gen] variant {i + 1}/{n} angle={label} seed={seed} ok", flush=True)
+        return {"images": images, "prompt": prompt, "steps": steps,
+                "angle_mode": angle_mode, "shared_seed": shared_seed}
     except Exception as e:
         return {"error": str(e), "stage": stage, "trace": traceback.format_exc()}
 
