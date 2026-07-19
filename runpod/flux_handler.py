@@ -78,9 +78,17 @@ def _load():
     global _pipe
     if _pipe is not None:
         return _pipe
+    import shutil
     import torch
     from diffusers import FluxPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
     from transformers import T5EncoderModel
+
+    # Niansuh aynasi scheduler'i 'config.json' olarak tutuyor; diffusers scheduler
+    # yukleyicisi 'scheduler_config.json' bekliyor → runtime'da kopyala.
+    sch = os.path.join(MODEL_DIR, "scheduler")
+    src, dst = os.path.join(sch, "config.json"), os.path.join(sch, "scheduler_config.json")
+    if os.path.isfile(src) and not os.path.isfile(dst):
+        shutil.copy(src, dst)
 
     t0 = time.time()
     print("[load] GGUF transformer...", flush=True)
