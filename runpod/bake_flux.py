@@ -17,25 +17,29 @@ import torch
 from huggingface_hub import hf_hub_download, snapshot_download
 from transformers import T5EncoderModel
 
-REPO = "black-forest-labs/FLUX.1-schnell"
-GGUF_REPO = "city96/FLUX.1-schnell-gguf"
+REPO = "black-forest-labs/FLUX.1-schnell"          # gated → HF_TOKEN şart
+GGUF_REPO = "city96/FLUX.1-schnell-gguf"           # ungated ayna (token gerekmez)
 GGUF_FILE = "flux1-schnell-Q4_K_S.gguf"
 MODEL_DIR = os.environ.get("MODEL_DIR", "/models")
+TOKEN = os.environ.get("HF_TOKEN") or None
+if not TOKEN:
+    raise SystemExit("[bake] HF_TOKEN yok — gated FLUX.1-schnell'e erişilemez (build-secret geçilmedi)")
 
 os.makedirs(os.path.join(MODEL_DIR, "transformer"), exist_ok=True)
 
-# 1) GGUF Q4 transformer (4-bit, ~6.8GB)
+# 1) GGUF Q4 transformer (4-bit, ~6.8GB) — ungated, token gerekmez
 print("[bake] GGUF transformer indiriliyor...", flush=True)
 gguf_path = hf_hub_download(
     GGUF_REPO, GGUF_FILE, local_dir=os.path.join(MODEL_DIR, "transformer")
 )
 print(f"[bake] gguf -> {gguf_path} ({os.path.getsize(gguf_path)/1e9:.1f}GB)", flush=True)
 
-# 2) schnell repo — büyük transformer/T5 safetensors HARİÇ her şey
+# 2) schnell repo — büyük transformer/T5 safetensors HARİÇ her şey (gated → token)
 print("[bake] pipeline bileşenleri (vae/clip/tokenizer/scheduler/config)...", flush=True)
 snapshot_download(
     REPO,
     local_dir=MODEL_DIR,
+    token=TOKEN,
     allow_patterns=[
         "model_index.json",
         "scheduler/*",
@@ -47,10 +51,20 @@ snapshot_download(
     ],
 )
 
-# 3) T5-XXL -> fp8_e4m3fn cast (CPU) -> kaydet (~4.9GB)
-print("[bake] T5-XXL bf16 indiriliyor + fp8 cast...", flush=True)
-te2 = T5EncoderModel.from_pretrained(REPO, subfolder="text_encoder_2", torch_dtype=torch.bfloat16)
-te2 = te2.to(torch.float8_e4m3fn)
+# 3) T5-XXL -> fp8_e4m3fn cast -> kaydet (~4.9GB)
+# RAM-güvenli: in-place param-param cast (bf16 tensor kopyaları serbest bırakılır);
+# tam .to(fp8) kopyası 16GB runner'da OOM riski taşır.
+print("[bake] T5-XXL bf16 indiriliyor + fp8 cast (low-mem)...", flush=True)
+te2 = T5EncoderModel.from_pretrained(
+    REPO, subfolder="text_encoder_2", torch_dtype=torch.bfloat16,
+    token=TOKEN, low_cpu_mem_usage=True,
+)
+with torch.no_grad():
+    for p in te2.parameters():
+        p.data = p.data.to(torch.float8_e4m3fn)
+    for name, buf in te2.named_buffers():
+        if buf.is_floating_point():
+            buf.data = buf.data.to(torch.float8_e4m3fn)
 te2.save_pretrained(os.path.join(MODEL_DIR, "text_encoder_2"))
 print("[bake] T5 fp8 kaydedildi", flush=True)
 

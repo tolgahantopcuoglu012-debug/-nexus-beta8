@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # FLUX.1-schnell — minimal diffusers RunPod Serverless worker (ComfyUI YOK)
 #
 # NF4'ün build-edilebilir eşdeğeri: GGUF Q4 (4-bit) transformer + fp8 T5, image'a baked.
@@ -38,8 +39,12 @@ RUN pip install --no-cache-dir \
         gguf sentencepiece protobuf Pillow runpod requests "huggingface_hub[hf_transfer]"
 
 # ── Ağırlıkları image'a bake et (runtime indirme YOK) ──
+# HF_TOKEN build-secret olarak mount edilir → gated FLUX.1-schnell erişimi.
+# Secret mount katmanda kalmaz (image'a token SIZMAZ).
 COPY runpod/bake_flux.py /tmp/bake_flux.py
-RUN python /tmp/bake_flux.py && rm -f /tmp/bake_flux.py
+RUN --mount=type=secret,id=hf_token \
+    HF_TOKEN="$(cat /run/secrets/hf_token)" python /tmp/bake_flux.py \
+    && rm -f /tmp/bake_flux.py
 
 COPY runpod/flux_handler.py /flux_handler.py
 CMD ["python", "-u", "/flux_handler.py"]

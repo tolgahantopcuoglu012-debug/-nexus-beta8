@@ -61,3 +61,5 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/nexus-flux-schnell:latest
           provenance: false
+          secrets: |
+            hf_token=${{ secrets.HF_TOKEN }}
