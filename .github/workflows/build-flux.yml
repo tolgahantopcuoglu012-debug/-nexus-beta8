@@ -1,0 +1,63 @@
+name: build-flux
+
+# FLUX.1-schnell minimal diffusers worker image'ini build edip GHCR'a push eder.
+# Tetik: runpod/ altindaki flux dosyalari degisince veya elle (workflow_dispatch).
+# Cikti: ghcr.io/<owner>/nexus-flux-schnell:latest  (RunPod endpoint bunu ceker)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'runpod/Dockerfile.flux'
+      - 'runpod/bake_flux.py'
+      - 'runpod/flux_handler.py'
+      - '.github/workflows/build-flux.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # ~20GB image + ~12GB agirlik indirme icin runner diskini bosalt (~30GB kazanir)
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      # Docker data-root'u buyuk /mnt diskine tasi (kok disk ~14GB, /mnt ~65GB)
+      - name: Move docker to /mnt
+        run: |
+          sudo systemctl stop docker
+          sudo mkdir -p /mnt/docker
+          echo '{ "data-root": "/mnt/docker" }' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker
+          docker info | grep -i "docker root dir"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: runpod/Dockerfile.flux
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/nexus-flux-schnell:latest
+          provenance: false
