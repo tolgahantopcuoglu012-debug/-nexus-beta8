@@ -1,0 +1,13 @@
+# Gizli anahtarlar — ASLA commit'lenmez
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+
+# Cloudflare Wrangler yerel önbellek/durum
+.wrangler/
+
+# Üretilen 3D çıktı sanat eserleri (büyük, versiyonlanmaz)
+*.glb
+*.stl
+job_result*.json
