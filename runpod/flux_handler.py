@@ -103,6 +103,9 @@ def _load():
         os.path.join(MODEL_DIR, "text_encoder_2"),
         torch_dtype=torch.bfloat16, low_cpu_mem_usage=True,
     )
+    # KRITIK: fp8 baked agirliklar from_pretrained(torch_dtype=bf16) ile upcast OLMUYOR;
+    # T5 fp8'de kalip "ufunc_add not implemented for Float8_e4m3fn" veriyor. Acikca cast.
+    te2 = te2.to(torch.bfloat16)
     print("[load] FluxPipeline birleştir...", flush=True)
     pipe = FluxPipeline.from_pretrained(
         MODEL_DIR, transformer=transformer, text_encoder_2=te2,
