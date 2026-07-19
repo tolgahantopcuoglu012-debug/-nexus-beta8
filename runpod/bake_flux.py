@@ -17,13 +17,14 @@ import torch
 from huggingface_hub import hf_hub_download, snapshot_download
 from transformers import T5EncoderModel
 
-REPO = "black-forest-labs/FLUX.1-schnell"          # gated → HF_TOKEN şart
-GGUF_REPO = "city96/FLUX.1-schnell-gguf"           # ungated ayna (token gerekmez)
+# Niansuh/FLUX.1-schnell = black-forest-labs'in TAM diffusers aynası, UNGATED
+# (gated:False, model_index+vae+text_encoder+text_encoder_2+tokenizer+scheduler).
+# Trellis'in "gated 401 → ungated ayna" deseninin aynısı → HF token gerekmez.
+REPO = "Niansuh/FLUX.1-schnell"
+GGUF_REPO = "city96/FLUX.1-schnell-gguf"           # ungated GGUF Q4 transformer
 GGUF_FILE = "flux1-schnell-Q4_K_S.gguf"
 MODEL_DIR = os.environ.get("MODEL_DIR", "/models")
-TOKEN = os.environ.get("HF_TOKEN") or None
-if not TOKEN:
-    raise SystemExit("[bake] HF_TOKEN yok — gated FLUX.1-schnell'e erişilemez (build-secret geçilmedi)")
+TOKEN = os.environ.get("HF_TOKEN") or None          # ungated → opsiyonel (None olabilir)
 
 os.makedirs(os.path.join(MODEL_DIR, "transformer"), exist_ok=True)
 
