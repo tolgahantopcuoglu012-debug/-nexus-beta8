@@ -28,9 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
-# ── PyTorch 2.4.1 / CUDA 12.4 ──
+# ── PyTorch 2.6.0 / CUDA 12.4 ──
+# NOT: torch 2.4.1 + diffusers 0.39 KIRIK — diffusers attention_dispatch.py torch
+# custom_op'u 'Tensor | None' (PEP604) imzasi kullaniyor, 2.4.1 infer_schema bunu
+# tanimiyor ("Parameter q has unsupported type"). 2.6.0 destekliyor.
 RUN pip install --no-cache-dir \
-        torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu124
+        torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
 
 # ── diffusers + GGUF + transformers yığını ──
 # diffusers>=0.32: FluxTransformer2DModel.from_single_file + GGUFQuantizationConfig.
