@@ -101,6 +101,29 @@ const PROMPT_TUNING = {
   ARTICLE_WORDS: ['a', 'an', 'the'],
 };
 
+// ── Çeviri katmanı config'i ────────────────────────────────────────────────
+// Risk: kısa Türkçe kelimeler İngilizce KISALTMAYA benziyor ve çevirmen onları
+// kısaltma sanabiliyor — en bilinen vaka "ev" → "EV (electric vehicle)". Kullanıcı
+// ev isterken elektrikli araç üretilir. Sistem prompt'u bu yorumu açıkça yasaklar
+// ve kısa kelimelerde en yaygın günlük Türkçe anlamı şart koşar.
+const TRANSLATION = {
+  MODEL: '@cf/meta/llama-4-scout-17b-16e-instruct',
+  MAX_TOKENS: 256,
+  SYSTEM: [
+    'You translate 3D-object generation prompts from any language into English.',
+    '',
+    'RULES:',
+    '- The input always describes a PHYSICAL OBJECT to be generated in 3D. Translate it as a concrete thing.',
+    '- NEVER interpret the input as an abbreviation, acronym or initialism. A short Turkish word that looks',
+    '  like an English acronym is an ordinary Turkish word, not an acronym.',
+    '- For single or short words use the most common everyday Turkish meaning:',
+    '  ev = house, at = horse, kar = snow, çay = tea, el = hand, ay = moon, göz = eye,',
+    '  kol = arm, saat = clock, don = frost or underwear (choose by context), yüz = face.',
+    '- If the text is already English, return it unchanged.',
+    '- Reply with ONLY the English text — no quotes, no explanation, no preamble.',
+  ].join('\n'),
+};
+
 // prompt içinde hard-surface anahtar kelimesi var mı? → eşleşen kelimeler
 function hardSurfaceHits(text) {
   const t = String(text || '').toLowerCase();
@@ -262,12 +285,12 @@ export default {
       let engPrompt = String(fBody.prompt);
       if (env.AI && fBody.translate !== false) {
         try {
-          const ai = await env.AI.run('@cf/meta/llama-4-scout-17b-16e-instruct', {
+          const ai = await env.AI.run(TRANSLATION.MODEL, {
             messages: [
-              { role: 'system', content: 'You translate image-generation prompts into English. If the text is already English, return it unchanged. Reply with ONLY the English text — no quotes, no explanations, no preamble.' },
+              { role: 'system', content: TRANSLATION.SYSTEM },
               { role: 'user', content: engPrompt },
             ],
-            max_tokens: 256,
+            max_tokens: TRANSLATION.MAX_TOKENS,
           });
           const t = ((ai && ai.response) || '').trim().replace(/^["']+|["']+$/g, '').trim();
           if (t) engPrompt = t;
@@ -294,6 +317,22 @@ export default {
       const input = { prompt: enriched.prompt, num_images: n };
       for (const k of ['steps', 'width', 'height', 'seed']) {
         if (fBody[k] !== undefined && fBody[k] !== null) input[k] = Number(fBody[k]);
+      }
+
+      // ── Kuru çalıştırma: { translate_only: true } ──
+      // Çeviri + keyword tespiti + prompt kurgusunu döndürür, RunPod'a HİÇ gitmez.
+      // Prompt/çeviri katmanını GPU yakmadan test etmek için (bir üretim ≈ 40 sn GPU).
+      if (fBody.translate_only) {
+        console.log('[worker] translate_only:', JSON.stringify(fBody.prompt), '->', JSON.stringify(engPrompt));
+        return json({
+          dry_run: true,
+          _original: String(fBody.prompt),
+          _translated: engPrompt,
+          _prompt: enriched.prompt,
+          _hard_surface: enriched.hardSurface,
+          _hs_hits: enriched.hits,
+          _angle_prefixed: enriched.anglePrefixed,
+        });
       }
 
       const res = await fetchWithBackoff(`${FLUX_BASE}/run`, {
