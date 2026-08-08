@@ -62,6 +62,34 @@ const PROMPT_TUNING = {
     'no watermark',
     'no text',
   ],
+
+  // ── Açı ön-eki (deneysel) ─────────────────────────────────────────────────
+  // Gözlem: handler prompt'un SONUNA eklediği ANGLES ifadelerine FLUX.1-schnell
+  // uymuyor — "Ön"/"Arka" düz karşıdan, "Yan" ise 3/4 çıkıyor. schnell 4 adımlık
+  // distilled bir model; baştaki token'lara sondakilerden daha çok uyuyor.
+  // Bu yüzden hard-surface prompt'ları açı ifadesiyle BAŞLATILIYOR.
+  //
+  // ⚠ BİLİNEN ÇAKIŞMA: Worker tüm varyantlar için TEK prompt yollar, açıyı ise
+  // handler varyant başına kendisi ekler. Yani nihai prompt şöyle olur:
+  //     "<ön-ek> <prompt>, ..nitelikler.., <handler'ın ANGLES ifadesi>, <BASE>"
+  //   · varyant 1 (Ön)  → ön-ek ile handler AYNI şeyi söyler → pekiştirir ✓
+  //   · varyant 2 (Yan) → ön-ek "3/4 ön" der, handler "tam yan profil" der ✗
+  //   · varyant 3 (Arka)→ ön-ek "3/4 ön" der, handler "3/4 arka" der        ✗
+  // Varyant başına ön-ek ancak handler değişikliğiyle (imaj rebuild) veya /flux'ı
+  // 3 ayrı tek-görsellik işe bölmekle mümkün. Bu tur bilinçli olarak kabul edildi.
+  //
+  // ÖLÇÜM SONUCU (2026-08-09, "kırmızı spor araba", seed 184475924):
+  // Ön-ek handler'ın sondaki ANGLES ifadesini GERÇEKTEN eziyor — hipotez doğru.
+  // Ama Worker tüm varyantlara AYNI ön-eki yolladığı için 3 varyantın üçü de düz
+  // cepheden çıktı: açı çeşitliliği tamamen kayboldu ve ön-ek olmadan elde edilen
+  // tek iyi 3/4 kadraj da yok oldu. Yani net etki NEGATİF.
+  // Bu yüzden varsayılan KAPALI. Varyant başına ön-ek ancak handler değişikliğiyle
+  // (imaj rebuild) anlamlı olur; o zaman burayı true yapmak yeterli.
+  HARD_SURFACE_ANGLE_PREFIX_ENABLED: false,
+  HARD_SURFACE_ANGLE_PREFIX: 'three-quarter front view of',
+
+  // Ön-ek eklenirken artikel tekrarını önle ("... of a a red car" olmasın).
+  ARTICLE_WORDS: ['a', 'an', 'the'],
 };
 
 // prompt içinde hard-surface anahtar kelimesi var mı? → eşleşen kelimeler
@@ -77,12 +105,29 @@ function hardSurfaceHits(text) {
   return [...hits];
 }
 
-// Hard-surface ise nitelikleri ekler; organik/karakter prompt'u aynen döner.
+// "three-quarter front view of" + "red sports car" → "... of a red sports car"
+// Prompt zaten a/an/the ile başlıyorsa artikel eklenmez.
+function withAnglePrefix(text) {
+  const first = String(text).trim().split(/\s+/)[0].toLowerCase();
+  const article = PROMPT_TUNING.ARTICLE_WORDS.includes(first) ? '' : 'a ';
+  return `${PROMPT_TUNING.HARD_SURFACE_ANGLE_PREFIX} ${article}${text}`;
+}
+
+// Hard-surface ise açı ön-eki + nitelikleri ekler; organik prompt aynen döner.
 function enrichPrompt(text) {
   const hits = hardSurfaceHits(text);
-  if (!hits.length) return { prompt: text, hardSurface: false, hits: [] };
+  if (!hits.length) {
+    return { prompt: text, hardSurface: false, hits: [], anglePrefixed: false };
+  }
   const extra = [...PROMPT_TUNING.HARD_SURFACE_QUALIFIERS, ...PROMPT_TUNING.HARD_SURFACE_AVOID];
-  return { prompt: `${text}, ${extra.join(', ')}`, hardSurface: true, hits };
+  const usePrefix = PROMPT_TUNING.HARD_SURFACE_ANGLE_PREFIX_ENABLED;
+  const body = usePrefix ? withAnglePrefix(text) : text;
+  return {
+    prompt: `${body}, ${extra.join(', ')}`,
+    hardSurface: true,
+    hits,
+    anglePrefixed: usePrefix,
+  };
 }
 
 const CORS = {
@@ -227,6 +272,15 @@ export default {
       if (enriched.hardSurface) {
         console.log('[worker] hard-surface tespit:', enriched.hits.slice(0, 5).join(', '));
       }
+      // Açı ön-eki handler'ın varyant-başına ANGLES ekiyle çakışabilir (config'teki
+      // nota bak). Sessizce yaşanmasın diye her işte açıkça loglanır.
+      const angleConflict = enriched.anglePrefixed && fBody.angles !== false;
+      if (angleConflict) {
+        console.warn('[worker] ⚠ açı çakışması olası: ön-ek "' +
+          PROMPT_TUNING.HARD_SURFACE_ANGLE_PREFIX +
+          '" tüm varyantlara giderken handler varyant başına ANGLES ekliyor ' +
+          '→ varyant 1 (Ön) uyumlu, varyant 2 (Yan) ve 3 (Arka) çelişkili prompt alır.');
+      }
 
       const input = { prompt: enriched.prompt, num_images: n };
       for (const k of ['steps', 'width', 'height', 'seed']) {
@@ -244,6 +298,8 @@ export default {
         _prompt: enriched.prompt,
         _hard_surface: enriched.hardSurface,
         _hs_hits: enriched.hits,
+        _angle_prefixed: enriched.anglePrefixed,
+        _angle_conflict: angleConflict,
       }, res.status);
     }
 
