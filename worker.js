@@ -46,21 +46,30 @@ const PROMPT_TUNING = {
   ],
 
   // Tespit edilince prompt'a eklenen nitelikler (açı-nötr).
-  // Bir kısmı handler'daki BASE ile bilinçli olarak örtüşür — pekiştirme zararsız.
+  //
+  // SADELEŞTİRME (2026-08-09): "orta çağ taş ev" üretimi alakasız çıktı verince
+  // zincir ölçüldü — FLUX'a giden nihai prompt 57-63 KELİME / 20 öbek oluyordu.
+  // FLUX'un CLIP-L kodlayıcısı 77 token'da kesiyor ve schnell 4 adım/CFG-yok
+  // konfigürasyonunda yoğun prompt takibinde zaten zayıf. Ekler seyreltiyordu.
+  //
+  // Silinen tekrarlar (handler'daki BASE zaten aynısını söylüyor):
+  //   · 'clean light gray background' ← BASE: 'clean plain light-grey background'
+  //   · 'soft studio lighting'        ← BASE: 'even studio lighting' (soft≠even, çelişki)
+  //   · 'full body in frame'          ← BASE: 'full object in frame'
+  // Sonuncusu ayrıca zararlıydı: "body" figür/beden kelimesi, bina prompt'unu
+  // karakter okumasına itiyor olabilir.
+  //
+  // Geriye ölçülmüş şekilde işe yarayan tek nitelik kalıyor: mat yüzey.
   HARD_SURFACE_QUALIFIERS: [
     'matte surface',
-    'soft studio lighting',
-    'clean light gray background',
-    'full body in frame',
   ],
 
   // İstenmeyenler — negative_prompt yerine pozitif ifade (yukarıdaki nota bak).
+  // schnell olumsuzlamaları güvenilir takip etmiyor: A/B'de 'no reflections'
+  // TUTTU (gövde belirgin şekilde matlaştı) ama 'no text' TUTMADI (hayalet yazı
+  // yine çıktı). Tutmayanlar öbek yeri işgal ettiği için silindi.
   HARD_SURFACE_AVOID: [
     'no reflections',
-    'no lens flare',
-    'no perspective distortion',
-    'no watermark',
-    'no text',
   ],
 
   // ── Açı ön-eki (deneysel) ─────────────────────────────────────────────────

@@ -5,3 +5,10 @@ compatibility_date = "2026-07-01"
 # Workers AI — /flux prompt çevirisi (Türkçe/herhangi bir dil → İngilizce)
 [ai]
 binding = "AI"
+
+# Kalıcı istek log'u. Bu blok yokken Cloudflare hiçbir şey saklamıyordu ve geçmiş
+# bir üretimin prompt zinciri (çeviri çıktısı, keyword tespiti) sonradan
+# incelenemiyordu — yalnızca `wrangler tail` ile CANLI trafik görülebiliyordu.
+[observability]
+enabled = true
+head_sampling_rate = 1.0
