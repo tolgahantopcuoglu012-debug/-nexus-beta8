@@ -11,3 +11,6 @@
 *.glb
 *.stl
 job_result*.json
+
+# Local Netlify folder
+.netlify

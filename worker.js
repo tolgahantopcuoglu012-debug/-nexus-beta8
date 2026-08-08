@@ -1,5 +1,90 @@
 const REPLICATE_BASE = 'https://api.replicate.com/v1';
 
+// ── Prompt zenginleştirme (yalnız /flux) ────────────────────────────────────
+// Trellis hard-surface objelerde iki şeyden çok zarar görür: parlak yansımalar
+// (mesh'e sahte geometri olarak yazılır) ve kırpılmış kadraj (eksik gövde).
+// Bu blok tek düzenleme noktasıdır — koda gömülü prompt string'i yoktur.
+//
+// KAPSAM SINIRI: buraya AÇI ifadesi yazılmaz. Açıyı RunPod handler'ındaki
+// ANGLES belirler (3 varyant = ön 3/4 → tam yan → arka 3/4); prompt'a global
+// "three-quarter view" eklemek "Yan"/"Arka" varyantlarıyla çelişir.
+//
+// NOT: FLUX.1-schnell distilled ve handler guidance_scale=0.0 ile çalışıyor →
+// gerçek negative_prompt desteklenmiyor (true_cfg_scale>1 gerektirir, 4-adım
+// davranışını bozar ve maliyeti ikiye katlar). İstenmeyenler bu yüzden
+// AVOID içinde pozitif ifadeyle prompt'a yazılır.
+const PROMPT_TUNING = {
+  // Eşleşme İngilizce çeviri üzerinde yapılır; çeviri kapalıysa/başarısızsa diye
+  // Türkçe karşılıklar da listede. Tek kelimeler token olarak (kelime sınırı),
+  // boşluklu ifadeler alt-dizge olarak aranır — "car" → "cartoon" eşleşmez.
+  HARD_SURFACE_KEYWORDS: [
+    // araçlar (EN)
+    'car', 'cars', 'vehicle', 'truck', 'van', 'pickup', 'bus', 'motorcycle',
+    'motorbike', 'scooter', 'bicycle', 'bike', 'sedan', 'suv', 'coupe',
+    'supercar', 'sports car', 'race car', 'muscle car', 'tank', 'train',
+    'locomotive', 'tractor', 'bulldozer', 'excavator', 'forklift', 'crane',
+    'trailer', 'buggy', 'kart', 'atv', 'rover', 'submarine', 'boat', 'ship',
+    'yacht', 'plane', 'airplane', 'aircraft', 'jet', 'helicopter', 'drone',
+    'spaceship', 'spacecraft', 'satellite', 'rocket',
+    // makine / hard-surface (EN)
+    'robot', 'mech', 'mecha', 'android', 'droid', 'engine', 'turbine',
+    'machine', 'machinery', 'gadget', 'device', 'console', 'weapon', 'gun',
+    'rifle', 'pistol', 'cannon', 'sword', 'blade', 'armor', 'armour', 'helmet',
+    'shield', 'tool', 'wrench', 'hardware', 'chassis', 'wheel', 'tire',
+    // eşya / mimari (EN)
+    'furniture', 'chair', 'table', 'desk', 'lamp', 'shelf', 'cabinet',
+    'building', 'house', 'tower', 'bridge', 'container', 'crate', 'barrel',
+    'box', 'canister', 'turret', 'antenna',
+    // TR karşılıklar
+    'araba', 'araç', 'otomobil', 'kamyon', 'kamyonet', 'otobüs', 'motosiklet',
+    'bisiklet', 'spor araba', 'tank', 'tren', 'traktör', 'vinç', 'denizaltı',
+    'gemi', 'tekne', 'uçak', 'helikopter', 'drone', 'uzay gemisi', 'roket',
+    'uydu', 'robot', 'motor', 'makine', 'silah', 'tüfek', 'top', 'kılıç',
+    'zırh', 'kask', 'kalkan', 'alet', 'tekerlek', 'lastik', 'mobilya',
+    'sandalye', 'masa', 'lamba', 'dolap', 'raf', 'bina', 'ev', 'kule',
+    'köprü', 'konteyner', 'sandık', 'varil', 'kutu',
+  ],
+
+  // Tespit edilince prompt'a eklenen nitelikler (açı-nötr).
+  // Bir kısmı handler'daki BASE ile bilinçli olarak örtüşür — pekiştirme zararsız.
+  HARD_SURFACE_QUALIFIERS: [
+    'matte surface',
+    'soft studio lighting',
+    'clean light gray background',
+    'full body in frame',
+  ],
+
+  // İstenmeyenler — negative_prompt yerine pozitif ifade (yukarıdaki nota bak).
+  HARD_SURFACE_AVOID: [
+    'no reflections',
+    'no lens flare',
+    'no perspective distortion',
+    'no watermark',
+    'no text',
+  ],
+};
+
+// prompt içinde hard-surface anahtar kelimesi var mı? → eşleşen kelimeler
+function hardSurfaceHits(text) {
+  const t = String(text || '').toLowerCase();
+  if (!t) return [];
+  const tokens = new Set(t.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  // Set: 'robot'/'tank'/'drone' gibi EN+TR ortak kelimeler iki kez sayılmasın.
+  const hits = new Set();
+  for (const kw of PROMPT_TUNING.HARD_SURFACE_KEYWORDS) {
+    if (kw.includes(' ') ? t.includes(kw) : tokens.has(kw)) hits.add(kw);
+  }
+  return [...hits];
+}
+
+// Hard-surface ise nitelikleri ekler; organik/karakter prompt'u aynen döner.
+function enrichPrompt(text) {
+  const hits = hardSurfaceHits(text);
+  if (!hits.length) return { prompt: text, hardSurface: false, hits: [] };
+  const extra = [...PROMPT_TUNING.HARD_SURFACE_QUALIFIERS, ...PROMPT_TUNING.HARD_SURFACE_AVOID];
+  return { prompt: `${text}, ${extra.join(', ')}`, hardSurface: true, hits };
+}
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
@@ -135,7 +220,15 @@ export default {
         } catch (e) { /* çeviri başarısız / model yoksa → orijinal prompt (üretim kesilmez) */ }
       }
 
-      const input = { prompt: engPrompt, num_images: n };
+      // Hard-surface (araç/makine/eşya) prompt'larına Trellis-dostu nitelikler eklenir.
+      // Tespit çeviri SONRASI, İngilizce metin üzerinde yapılır. Organik/karakter
+      // prompt'ları hiç dokunulmadan geçer.
+      const enriched = enrichPrompt(engPrompt);
+      if (enriched.hardSurface) {
+        console.log('[worker] hard-surface tespit:', enriched.hits.slice(0, 5).join(', '));
+      }
+
+      const input = { prompt: enriched.prompt, num_images: n };
       for (const k of ['steps', 'width', 'height', 'seed']) {
         if (fBody[k] !== undefined && fBody[k] !== null) input[k] = Number(fBody[k]);
       }
@@ -145,7 +238,13 @@ export default {
       });
       const text = await res.text();
       let data; try { data = JSON.parse(text); } catch { data = { raw:text }; }
-      return json({ ...data, _translated: engPrompt }, res.status);
+      return json({
+        ...data,
+        _translated: engPrompt,
+        _prompt: enriched.prompt,
+        _hard_surface: enriched.hardSurface,
+        _hs_hits: enriched.hits,
+      }, res.status);
     }
 
     // ── /generate : RunPod (Trellis 2) proxy ──
